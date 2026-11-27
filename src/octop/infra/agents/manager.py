@@ -3379,6 +3379,7 @@ class AgentManager:
         providers: list[MediaProviderUpdate],
         default_image_provider: str | None,
         default_video_provider: str | None,
+        default_three_d_provider: str | None = None,
     ) -> MediaGenerationSettings:
         """Persist media settings and rebuild running harness agents."""
         view = self._media_generation.save(
@@ -3386,6 +3387,7 @@ class AgentManager:
             providers=providers,
             default_image_provider=default_image_provider,
             default_video_provider=default_video_provider,
+            default_three_d_provider=default_three_d_provider,
         )
         await self.reload_all()
         return view

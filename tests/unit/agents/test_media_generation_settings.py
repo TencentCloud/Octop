@@ -45,20 +45,30 @@ def _provider(
     api_key: str | None = None,
     image_enabled: bool = True,
     video_enabled: bool = True,
+    three_d_enabled: bool = False,
+    three_d_model: str | None = None,
 ) -> MediaProviderUpdate:
     defaults = {
         "volcengine": (
             "https://ark.cn-beijing.volces.com/api/v3",
             "seedream-test",
             "seedance-test",
+            "",
         ),
         "dashscope": (
             "https://dashscope.aliyuncs.com/api/v1",
             "wan-image-test",
             "wan-video-test",
+            "",
+        ),
+        "tencent-tokenhub": (
+            "https://tokenhub.tencentmaas.com/v1",
+            "hy-image-v3.5-preview",
+            "hy-video-v1.5",
+            "hy-3d-3.6",
         ),
     }
-    base_url, image_model, video_model = defaults[provider]
+    base_url, image_model, video_model, default_3d = defaults[provider]
     return MediaProviderUpdate(
         id=provider_id,
         provider=provider,  # type: ignore[arg-type]
@@ -67,8 +77,10 @@ def _provider(
         base_url=base_url,
         image_enabled=image_enabled,
         video_enabled=video_enabled,
+        three_d_enabled=three_d_enabled,
         image_model=image_model,
         video_model=video_model,
+        three_d_model=default_3d if three_d_model is None else three_d_model,
         api_key=api_key,
     )
 
@@ -172,6 +184,11 @@ def test_disabled_media_generation_does_not_build_harness_config(
             "https://api.minimax.cn",
             "https://api.minimax.cn/v1/models",
         ),
+        (
+            "tencent-tokenhub",
+            "https://tokenhub.tencentmaas.com/v1",
+            "https://tokenhub.tencentmaas.com/v1/models",
+        ),
     ],
 )
 @pytest.mark.asyncio
@@ -200,3 +217,79 @@ async def test_verify_media_credentials_uses_provider_probe(
         "url": expected_url,
         "auth": "Bearer provider-test-key",
     }
+
+
+def test_tencent_tokenhub_three_d_settings_and_non_3d_rejection(
+    store: tuple[MediaGenerationSettingsStore, SettingsRepo, SecretRepo],
+) -> None:
+    import importlib
+
+    from octop.infra.errors import OctopError
+
+    media, _, _ = store
+    with pytest.raises(OctopError, match="does not support 3D generation"):
+        media.save(
+            enabled=True,
+            providers=[
+                _provider(
+                    "ark-3d",
+                    "volcengine",
+                    api_key="ark-key",
+                    three_d_enabled=True,
+                    three_d_model="hy-3d-3.6",
+                )
+            ],
+            default_image_provider="ark-3d",
+            default_video_provider="ark-3d",
+            default_three_d_provider="ark-3d",
+        )
+
+    view = media.save(
+        enabled=True,
+        providers=[
+            _provider(
+                "tokenhub-main",
+                "tencent-tokenhub",
+                api_key="tokenhub-secret-test",
+                image_enabled=False,
+                video_enabled=False,
+                three_d_enabled=True,
+            )
+        ],
+        default_image_provider=None,
+        default_video_provider=None,
+        default_three_d_provider="tokenhub-main",
+    )
+
+    assert view.configured is True
+    assert view.default_three_d_provider == "tokenhub-main"
+    assert view.providers[0].three_d_enabled is True
+    assert view.providers[0].three_d_model == "hy-3d-3.6"
+    assert media.api_key("tokenhub-main") == "tokenhub-secret-test"
+
+    media_mod = importlib.import_module("octop_harness.media")
+    supported = set(getattr(media_mod, "BUILTIN_MEDIA_PROVIDERS", ()))
+    config = media.harness_config()
+    if "tencent-tokenhub" in supported:
+        assert config is not None
+        assert getattr(config, "default_three_d_provider", None) == "tokenhub-main"
+        assert config.providers[0].provider == "tencent-tokenhub"
+        assert getattr(config.providers[0], "three_d_model", "") == "hy-3d-3.6"
+    else:
+        assert config is None
+
+
+@pytest.mark.asyncio
+async def test_verify_media_credentials_surfaces_tokenhub_error_envelope() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": {"code": "1002", "message": "Invalid API key"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await verify_media_credentials(
+            "tencent-tokenhub",
+            "bad-key",
+            base_url="https://tokenhub.tencentmaas.com/v1",
+            client=client,
+        )
+
+    assert result == {"ok": False, "error": "Invalid API key"}

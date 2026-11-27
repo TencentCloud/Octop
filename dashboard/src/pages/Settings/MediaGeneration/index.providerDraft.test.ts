@@ -17,8 +17,10 @@ function provider(
     base_url: "https://ark.example.test/api/v3",
     image_enabled: true,
     video_enabled: true,
+    three_d_enabled: false,
     image_model: "doubao-seedream-3-0-t2i",
     video_model: "doubao-seedance-1-0-pro",
+    three_d_model: "",
     api_key_set: false,
     configured: false,
     api_key: "",
@@ -108,6 +110,38 @@ describe("buildProviderDraft", () => {
     expect(draft.image_model).toBe("");
     expect(draft.video_model).toBe("");
     expect(draft.display_name).toBe("Volcengine");
+  });
+
+  it("keeps the configured 3D model when its tool switch is off", () => {
+    const validated = {
+      provider: "tencent-tokenhub" as const,
+      display_name: "Tencent Cloud TokenHub",
+      base_url: "https://tokenhub.tencentmaas.com/v1",
+      api_key: "",
+      image_enabled: true,
+      video_enabled: true,
+      three_d_enabled: false,
+      image_model: "hy-image-v3.5-preview",
+      video_model: "hy-video-v1.5",
+    };
+    const stored = {
+      ...validated,
+      three_d_model: "hy-3d-3.6",
+    };
+
+    const draft = buildProviderDraft(
+      provider({
+        id: "tencent-tokenhub-default",
+        provider: "tencent-tokenhub",
+        three_d_enabled: true,
+        three_d_model: "hy-3d-3.6",
+      }),
+      validated,
+      stored,
+    );
+
+    expect(draft.three_d_enabled).toBe(false);
+    expect(draft.three_d_model).toBe("hy-3d-3.6");
   });
 
   it("keeps the provider identity that is not part of the form", () => {

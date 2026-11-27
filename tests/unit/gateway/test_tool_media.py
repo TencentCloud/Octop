@@ -73,6 +73,51 @@ def test_iter_media_blocks_supports_workbuddy_generation_envelopes() -> None:
     ]
 
 
+def test_iter_media_blocks_supports_three_d_generation_envelopes() -> None:
+    content = json.dumps(
+        {
+            "type": "3d_gen_tool_result",
+            "previews": [
+                {
+                    "path": "generated/3d/preview.png",
+                    "mediaType": "image/png",
+                }
+            ],
+            "models": [
+                {
+                    "path": "generated/3d/model.glb",
+                    "mediaType": "model/gltf-binary",
+                }
+            ],
+        }
+    )
+
+    assert iter_media_blocks(content) == [
+        {
+            "type": "image",
+            "path": "generated/3d/preview.png",
+            "filename": "preview.png",
+            "media_type": "image/png",
+            "source": {
+                "type": "url",
+                "url": "generated/3d/preview.png",
+                "media_type": "image/png",
+            },
+        },
+        {
+            "type": "file",
+            "path": "generated/3d/model.glb",
+            "filename": "model.glb",
+            "media_type": "model/gltf-binary",
+            "source": {
+                "type": "url",
+                "url": "generated/3d/model.glb",
+                "media_type": "model/gltf-binary",
+            },
+        },
+    ]
+
+
 @pytest.mark.asyncio
 async def test_workspace_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as ws:
@@ -494,6 +539,7 @@ def test_is_media_push_tool_allowlist() -> None:
     assert is_media_push_tool("namespace/desktop_screenshot")
     assert is_media_push_tool("mobile_screenshot")
     assert is_media_push_tool("generate_image")
+    assert is_media_push_tool("generate_3d")
     assert not is_media_push_tool("write_file")
     assert not is_media_push_tool("read_file")
     assert not is_media_push_tool("browser_use")

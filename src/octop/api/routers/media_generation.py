@@ -25,6 +25,7 @@ class MediaProviderPresetResponse(BaseModel):
     base_url: str
     image_models: list[str]
     video_models: list[str]
+    three_d_models: list[str] = Field(default_factory=list)
 
 
 class MediaProviderResponse(BaseModel):
@@ -39,6 +40,8 @@ class MediaProviderResponse(BaseModel):
     video_model: str
     api_key_set: bool
     configured: bool
+    three_d_enabled: bool = False
+    three_d_model: str = ""
 
 
 class MediaGenerationSettingsResponse(BaseModel):
@@ -47,6 +50,7 @@ class MediaGenerationSettingsResponse(BaseModel):
     default_image_provider: str | None
     default_video_provider: str | None
     configured: bool
+    default_three_d_provider: str | None = None
 
 
 class MediaProviderBody(BaseModel):
@@ -59,6 +63,8 @@ class MediaProviderBody(BaseModel):
     video_enabled: bool = True
     image_model: str
     video_model: str
+    three_d_enabled: bool = False
+    three_d_model: str = ""
     api_key: str | None = Field(
         default=None,
         description="Write-only API key; omit to keep the stored value.",
@@ -77,15 +83,29 @@ class MediaGenerationSettingsBody(BaseModel):
     providers: list[MediaProviderBody] = Field(default_factory=list, max_length=8)
     default_image_provider: str | None = None
     default_video_provider: str | None = None
+    default_three_d_provider: str | None = None
 
 
 class MediaGenerationTestBody(BaseModel):
-    kind: Literal["credentials", "image", "video"] = "credentials"
+    kind: Literal["credentials", "image", "video", "3d"] = "credentials"
     provider: MediaProviderBody
 
 
 class MediaGenerationTestResponse(BaseModel):
     ok: bool
+    error: str | None = None
+
+
+class MediaGenerationFetchModelsBody(BaseModel):
+    provider: MediaProviderBody
+
+
+class MediaGenerationFetchModelsResponse(BaseModel):
+    ok: bool
+    image_models: list[str] = Field(default_factory=list)
+    video_models: list[str] = Field(default_factory=list)
+    three_d_models: list[str] = Field(default_factory=list)
+    total_remote: int = 0
     error: str | None = None
 
 
@@ -102,6 +122,8 @@ def _provider_response(view: MediaProviderSettings) -> MediaProviderResponse:
         video_model=view.video_model,
         api_key_set=view.api_key_set,
         configured=view.configured,
+        three_d_enabled=view.three_d_enabled,
+        three_d_model=view.three_d_model,
     )
 
 
@@ -112,13 +134,14 @@ def _response(view: MediaGenerationSettings) -> MediaGenerationSettingsResponse:
         default_image_provider=view.default_image_provider,
         default_video_provider=view.default_video_provider,
         configured=view.configured,
+        default_three_d_provider=view.default_three_d_provider,
     )
 
 
 @router.get(
     "/presets",
     summary="List built-in media provider presets",
-    description="Return supported provider adapters and their default image and video models.",
+    description="Return supported provider adapters and their default image, video, and 3D models.",
     response_model=list[MediaProviderPresetResponse],
 )
 async def list_media_provider_presets(
@@ -131,6 +154,7 @@ async def list_media_provider_presets(
             base_url=item.base_url,
             image_models=list(item.image_models),
             video_models=list(item.video_models),
+            three_d_models=list(item.three_d_models),
         )
         for item in MEDIA_PROVIDER_PRESETS.values()
     ]
@@ -140,7 +164,7 @@ async def list_media_provider_presets(
     "",
     summary="Get media generation settings",
     description=(
-        "Return instance-wide provider instances and default image/video routes. "
+        "Return instance-wide provider instances and default image/video/3D routes. "
         "Stored API keys are never returned."
     ),
     response_model=MediaGenerationSettingsResponse,
@@ -171,6 +195,7 @@ async def put_media_generation_settings(
         providers=[item.to_domain() for item in body.providers],
         default_image_provider=body.default_image_provider,
         default_video_provider=body.default_video_provider,
+        default_three_d_provider=body.default_three_d_provider,
     )
     return _response(view)
 
@@ -179,7 +204,7 @@ async def put_media_generation_settings(
     "/test",
     summary="Test a media provider configuration",
     description=(
-        "Test credentials without generation, or submit a real image/video model "
+        "Test credentials without generation, or submit a real image, video, or 3D model "
         "request. Model tests may incur provider charges."
     ),
     response_model=MediaGenerationTestResponse,
@@ -197,6 +222,36 @@ async def test_media_generation_provider(
         result = await store.test_model(provider, kind=body.kind)
     return MediaGenerationTestResponse(
         ok=bool(result.get("ok")),
+        error=str(result["error"]) if result.get("error") else None,
+    )
+
+
+@router.post(
+    "/fetch-models",
+    summary="Fetch available media models from a provider",
+    description=(
+        "Query the provider's model listing endpoint without incurring generation charges "
+        "and return classified image, video, and 3D model IDs."
+    ),
+    response_model=MediaGenerationFetchModelsResponse,
+)
+async def fetch_media_generation_models(
+    body: MediaGenerationFetchModelsBody,
+    _: Any = Depends(require_permission("model_generation")),
+    server: Any = Depends(get_server),
+) -> MediaGenerationFetchModelsResponse:
+    store = server.app_runtime.agent_registry.media_generation
+    result = await store.fetch_models(body.provider.to_domain())
+    raw_image = result.get("image_models")
+    raw_video = result.get("video_models")
+    raw_three_d = result.get("three_d_models")
+    raw_total = result.get("total_remote")
+    return MediaGenerationFetchModelsResponse(
+        ok=bool(result.get("ok")),
+        image_models=[str(m) for m in raw_image] if isinstance(raw_image, list) else [],
+        video_models=[str(m) for m in raw_video] if isinstance(raw_video, list) else [],
+        three_d_models=[str(m) for m in raw_three_d] if isinstance(raw_three_d, list) else [],
+        total_remote=int(raw_total) if isinstance(raw_total, int) else 0,
         error=str(result["error"]) if result.get("error") else None,
     )
 

@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import dataclasses
+import importlib
 import json
 import re
+import struct
+import zlib
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
@@ -19,8 +24,8 @@ from octop.infra.errors import ErrorCode, OctopError
 if TYPE_CHECKING:
     from octop_harness import MediaGenerationConfig
 
-MediaProviderName = Literal["volcengine", "dashscope", "minimax"]
-MediaTestKind = Literal["image", "video"]
+MediaProviderName = Literal["volcengine", "dashscope", "minimax", "tencent-tokenhub"]
+MediaTestKind = Literal["image", "video", "3d"]
 
 DEFAULT_PROVIDER_ID = "volcengine-default"
 DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
@@ -51,6 +56,7 @@ class MediaProviderPreset:
     base_url: str
     image_models: tuple[str, ...]
     video_models: tuple[str, ...]
+    three_d_models: tuple[str, ...] = ()
 
     @property
     def default_image_model(self) -> str:
@@ -59,6 +65,14 @@ class MediaProviderPreset:
     @property
     def default_video_model(self) -> str:
         return self.video_models[0]
+
+    @property
+    def supports_three_d(self) -> bool:
+        return bool(self.three_d_models)
+
+    @property
+    def default_three_d_model(self) -> str:
+        return self.three_d_models[0] if self.three_d_models else ""
 
 
 MEDIA_PROVIDER_PRESETS: dict[MediaProviderName, MediaProviderPreset] = {
@@ -105,6 +119,74 @@ MEDIA_PROVIDER_PRESETS: dict[MediaProviderName, MediaProviderPreset] = {
         image_models=("image-01", "image-01-live"),
         video_models=("MiniMax-H3", "MiniMax-H3-Max"),
     ),
+    "tencent-tokenhub": MediaProviderPreset(
+        provider="tencent-tokenhub",
+        display_name="Tencent Cloud TokenHub",
+        base_url="https://tokenhub.tencentmaas.com/v1",
+        image_models=(
+            "hy-image-v3.5-preview",
+            "wand-vega-image-1.5-pro",
+            "wand-vega-image-pro",
+            "wand-vega-image-flash",
+            "wand-vega-image-lite",
+            "seedream-image-v5.5",
+            "seedream-image-v5.0-pro",
+            "seedream-image-v5.0-flash",
+            "kling-image-v4",
+            "kling-image-v4-long",
+            "kling-image-v3-omni",
+            "kling-image-v3",
+            "kling-image-o1",
+            "vidu-image-q2",
+            "hidream-image-o1-1.5",
+            "hidream-image-o1-1.5-edit",
+            "minimax-image-h3",
+            "minimax-image-h3-highspeed",
+        ),
+        video_models=(
+            "hy-video-v1.5",
+            "wand-vega-video-1.5-lite",
+            "wand-vega-video-1.0-lite",
+            "kling-video-v4",
+            "kling-video-v4-flash",
+            "kling-video-v3",
+            "kling-video-v3-omni",
+            "kling-video-v3-turbo",
+            "kling-video-o1",
+            "kling-video-v2.6",
+            "kling-video-v2.5-turbo",
+            "vidu-video-q4-preview",
+            "vidu-video-q3-pro",
+            "vidu-video-q3-turbo",
+            "vidu-video-q3",
+            "vidu-video-q2-pro",
+            "vidu-video-q2-turbo",
+            "vidu-video-q2",
+            "pixverse-video-v6.0-max",
+            "pixverse-video-v6.0",
+            "pixverse-video-c1",
+            "pixverse-video-v5.6",
+            "minimax-video-h3",
+            "minimax-video-h3-max",
+            "minimax-video-h3-highspeed",
+            "minimax-video-h3-lite",
+            "minimax-video-v2.3",
+            "minimax-video-v2.3-fast",
+            "yt-video-2.0",
+        ),
+        three_d_models=(
+            "hy-3d-3.6",
+            "hy-3d-3.1",
+            "hy-3d-3.0",
+            "hy-3d-express",
+            "tripo-3d-3.1",
+            "tripo-3d-p2",
+            "tripo-3d-p1",
+            "hi3d-3.0",
+            "hi3d-2.1",
+            "rodin-gen-3d-2.5",
+        ),
+    ),
 }
 
 
@@ -121,6 +203,8 @@ class MediaProviderUpdate:
     video_enabled: bool
     image_model: str
     video_model: str
+    three_d_enabled: bool = False
+    three_d_model: str = ""
     api_key: str | None = field(default=None, repr=False, compare=False)
     clear_api_key: bool = False
 
@@ -139,12 +223,32 @@ class MediaProviderSettings:
     image_model: str
     video_model: str
     api_key_set: bool
+    three_d_enabled: bool = False
+    three_d_model: str = ""
 
     @property
     def configured(self) -> bool:
         return bool(
-            self.enabled and self.api_key_set and (self.image_enabled or self.video_enabled)
+            self.enabled
+            and self.api_key_set
+            and (self.image_enabled or self.video_enabled or self.three_d_enabled)
         )
+
+
+def _kind_enabled_attr(kind: MediaTestKind) -> str:
+    if kind == "image":
+        return "image_enabled"
+    if kind == "video":
+        return "video_enabled"
+    return "three_d_enabled"
+
+
+def _kind_route_field(kind: MediaTestKind) -> str:
+    if kind == "image":
+        return "default_image_provider"
+    if kind == "video":
+        return "default_video_provider"
+    return "default_three_d_provider"
 
 
 @dataclass(frozen=True)
@@ -155,6 +259,7 @@ class MediaGenerationSettings:
     providers: tuple[MediaProviderSettings, ...]
     default_image_provider: str | None
     default_video_provider: str | None
+    default_three_d_provider: str | None = None
 
     def provider_by_id(self, provider_id: str | None) -> MediaProviderSettings | None:
         if provider_id is None:
@@ -162,15 +267,21 @@ class MediaGenerationSettings:
         return next((item for item in self.providers if item.id == provider_id), None)
 
     def has_configured_route(self, kind: MediaTestKind) -> bool:
-        route = self.default_image_provider if kind == "image" else self.default_video_provider
+        route = getattr(self, _kind_route_field(kind))
         provider = self.provider_by_id(route)
-        return bool(provider and provider.configured and getattr(provider, f"{kind}_enabled"))
+        return bool(
+            provider and provider.configured and getattr(provider, _kind_enabled_attr(kind))
+        )
 
     @property
     def configured(self) -> bool:
         return bool(
             self.enabled
-            and (self.has_configured_route("image") or self.has_configured_route("video"))
+            and (
+                self.has_configured_route("image")
+                or self.has_configured_route("video")
+                or self.has_configured_route("3d")
+            )
         )
 
 
@@ -196,6 +307,8 @@ def _normalized_update(item: MediaProviderUpdate) -> MediaProviderUpdate:
         video_enabled=item.video_enabled,
         image_model=item.image_model.strip(),
         video_model=item.video_model.strip(),
+        three_d_enabled=item.three_d_enabled,
+        three_d_model=item.three_d_model.strip(),
         api_key=(item.api_key or "").strip() or None,
         clear_api_key=item.clear_api_key,
     )
@@ -208,17 +321,22 @@ def _validate_provider(item: MediaProviderUpdate) -> None:
         )
     if item.provider not in MEDIA_PROVIDER_PRESETS:
         raise _bad_args(f"unsupported media provider: {item.provider}")
+    preset = MEDIA_PROVIDER_PRESETS[item.provider]
     if not item.display_name:
         raise _bad_args(f"display_name is required for provider {item.id}")
     parsed = urlsplit(item.base_url)
     if parsed.scheme != "https" or not parsed.netloc:
         raise _bad_args(f"provider {item.id} base_url must be an HTTPS URL")
-    if item.enabled and not (item.image_enabled or item.video_enabled):
-        raise _bad_args(f"provider {item.id} must enable image or video generation")
+    if item.three_d_enabled and not preset.supports_three_d:
+        raise _bad_args(f"provider {item.provider} does not support 3D generation")
+    if item.enabled and not (item.image_enabled or item.video_enabled or item.three_d_enabled):
+        raise _bad_args(f"provider {item.id} must enable image, video, or 3D generation")
     if item.enabled and item.image_enabled and not item.image_model:
         raise _bad_args(f"image_model is required for provider {item.id}")
     if item.enabled and item.video_enabled and not item.video_model:
         raise _bad_args(f"video_model is required for provider {item.id}")
+    if item.enabled and item.three_d_enabled and not item.three_d_model:
+        raise _bad_args(f"three_d_model is required for provider {item.id}")
 
 
 def _probe_url(provider: MediaProviderName, base_url: str) -> str:
@@ -229,6 +347,176 @@ def _probe_url(provider: MediaProviderName, base_url: str) -> str:
     if provider == "dashscope":
         return f"{base}/models?page_no=1&page_size=1"
     return f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+
+
+def _models_list_url(provider: MediaProviderName, base_url: str) -> str:
+    base = base_url.rstrip("/")
+    if provider == "dashscope":
+        return f"{base}/models?page_no=1&page_size=200"
+    if provider == "volcengine":
+        return f"{base}/models"
+    return f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+
+
+_TOKENHUB_IMAGE_PREFIXES = (
+    "hy-image-",
+    "wand-vega-image",
+    "vidu-image",
+    "seedream-image",
+    "kling-image",
+    "hidream-image",
+    "minimax-image",
+)
+_TOKENHUB_VIDEO_PREFIXES = (
+    "hy-video",
+    "wand-vega-video",
+    "kling-video",
+    "vidu-video",
+    "pixverse-video",
+    "minimax-video",
+    "yt-video",
+)
+_TOKENHUB_VIDEO_EXCLUDES = ("motion-control", "humanactor", "-fx")
+_TOKENHUB_3D_PREFIXES = ("hy-3d-", "tripo-3d-", "hi3d-", "rodin-gen-3d-")
+_TOKENHUB_3D_EXCLUDES = (
+    "-component",
+    "-format",
+    "-texture",
+    "-uv",
+    "-retopology",
+    "-rigging",
+    "-motion",
+    "-polygen",
+    "-animation",
+)
+
+
+def _classify_remote_models(
+    provider: MediaProviderName,
+    entries: list[dict[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    """Classify online remote model entries into image, video, and 3D model lists."""
+    preset = MEDIA_PROVIDER_PRESETS[provider]
+    image_found: list[str] = []
+    video_found: list[str] = []
+    three_d_found: list[str] = []
+
+    for item in entries:
+        model_id = str(item.get("id") or item.get("model") or "").strip()
+        if not model_id:
+            continue
+        status = str(item.get("status") or "").strip().lower()
+        if status and status not in {"online", "active", "available", "enabled"}:
+            continue
+        # Skip chat/multimodal LLMs that advertise token generation limits.
+        if item.get("max_output_tokens") is not None:
+            continue
+        lower = model_id.lower()
+        if provider == "tencent-tokenhub":
+            if lower.startswith(_TOKENHUB_IMAGE_PREFIXES):
+                image_found.append(model_id)
+            elif lower.startswith(_TOKENHUB_VIDEO_PREFIXES) and not any(
+                tok in lower for tok in _TOKENHUB_VIDEO_EXCLUDES
+            ):
+                video_found.append(model_id)
+            elif lower.startswith(_TOKENHUB_3D_PREFIXES) and not any(
+                tok in lower for tok in _TOKENHUB_3D_EXCLUDES
+            ):
+                three_d_found.append(model_id)
+        elif provider == "volcengine":
+            if ("seedream" in lower or "t2i" in lower or "image" in lower) and "video" not in lower:
+                image_found.append(model_id)
+            elif any(tok in lower for tok in ("seedance", "t2v", "i2v", "video")) and (
+                "vision" not in lower and "-vl" not in lower
+            ):
+                video_found.append(model_id)
+        elif provider == "dashscope":
+            if any(tok in lower for tok in ("qwen-image", "z-image", "flux")) or (
+                "wan" in lower and any(tok in lower for tok in ("t2i", "i2i", "image"))
+            ):
+                image_found.append(model_id)
+            elif "wan" in lower and any(
+                tok in lower for tok in ("t2v", "i2v", "kf2v", "r2v", "video")
+            ):
+                video_found.append(model_id)
+        elif provider == "minimax":
+            if lower.startswith("image-") or "image" in lower:
+                image_found.append(model_id)
+            elif any(tok in lower for tok in ("hailuo", "minimax-h3", "video")):
+                video_found.append(model_id)
+
+    def _merge(preset_models: tuple[str, ...], discovered: list[str]) -> list[str]:
+        if not discovered:
+            return list(preset_models)
+        discovered_set = set(discovered)
+        ordered = [m for m in preset_models if m in discovered_set]
+        extras = sorted(m for m in discovered_set if m not in set(ordered))
+        # Keep any preset models not returned by remote at the end so defaults remain selectable.
+        missing_presets = [m for m in preset_models if m not in discovered_set]
+        return [*ordered, *extras, *missing_presets]
+
+    return (
+        _merge(preset.image_models, image_found),
+        _merge(preset.video_models, video_found),
+        _merge(preset.three_d_models, three_d_found) if preset.supports_three_d else [],
+    )
+
+
+async def fetch_media_provider_models(
+    provider: MediaProviderName,
+    api_key: str,
+    *,
+    base_url: str,
+    client: httpx.AsyncClient | None = None,
+) -> dict[str, object]:
+    """Fetch remote models from a provider's model-list endpoint and classify by modality."""
+
+    async def _request(http: httpx.AsyncClient) -> httpx.Response:
+        return await http.get(
+            _models_list_url(provider, base_url),
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+
+    try:
+        if client is not None:
+            response = await _request(client)
+        else:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as http:
+                response = await _request(http)
+    except httpx.HTTPError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if response.status_code in {401, 403}:
+        return {"ok": False, "error": "Media provider authentication failed"}
+    if response.is_error:
+        return {
+            "ok": False,
+            "error": f"Model list endpoint returned HTTP {response.status_code}",
+        }
+    try:
+        payload = response.json()
+    except ValueError:
+        return {"ok": False, "error": "Model list endpoint returned invalid JSON"}
+
+    raw_items: list[dict[str, Any]] = []
+    if isinstance(payload, dict):
+        if isinstance(payload.get("data"), list):
+            raw_items = [item for item in payload["data"] if isinstance(item, dict)]
+        elif isinstance(payload.get("output"), dict) and isinstance(
+            payload["output"].get("models"), list
+        ):
+            raw_items = [item for item in payload["output"]["models"] if isinstance(item, dict)]
+        elif isinstance(payload.get("models"), list):
+            raw_items = [item for item in payload["models"] if isinstance(item, dict)]
+
+    image_models, video_models, three_d_models = _classify_remote_models(provider, raw_items)
+    return {
+        "ok": True,
+        "image_models": image_models,
+        "video_models": video_models,
+        "three_d_models": three_d_models,
+        "total_remote": len(raw_items),
+    }
 
 
 async def verify_media_credentials(
@@ -277,7 +565,50 @@ async def verify_media_credentials(
                 }
             if payload.get("code") and payload.get("message"):
                 return {"ok": False, "error": str(payload["message"])}
+            error = payload.get("error")
+            if isinstance(error, dict) and (error.get("message") or error.get("code")):
+                return {"ok": False, "error": str(error.get("message") or error)}
+            if isinstance(error, str) and error.strip():
+                return {"ok": False, "error": error.strip()}
     return {"ok": True}
+
+
+_IMAGE_ONLY_VIDEO_MODELS = frozenset(
+    {
+        "vidu-video-q4-preview",
+        "vidu-video-q3",
+        "vidu-video-q2-pro",
+        "vidu-video-q2-turbo",
+        "minimax-video-v2.3-fast",
+        "yt-video-2.0",
+    }
+)
+_IMAGE_ONLY_3D_MODELS = frozenset({"hy-3d-3.6", "hi3d-3.0", "hi3d-2.1"})
+
+
+def _minimal_test_png_data_url(size: int = 320) -> str:
+    """Return a tiny solid-color PNG data URL meeting >=300px image/video/3D inputs."""
+
+    def _chunk(chunk_type: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
+
+    row = b"\x00" + bytes((66, 133, 244)) * size
+    ihdr = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    raw = (
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", ihdr)
+        + _chunk(b"IDAT", zlib.compress(row * size, level=9))
+        + _chunk(b"IEND", b"")
+    )
+    return f"data:image/png;base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+def _construct_dataclass_compat(cls: type[Any], **kwargs: Any) -> Any:
+    """Instantiate a harness dataclass while ignoring fields absent in older SDK versions."""
+    field_names = {entry.name for entry in dataclasses.fields(cls)}
+    filtered = {key: value for key, value in kwargs.items() if key in field_names}
+    return cls(**filtered)
 
 
 async def verify_media_model(
@@ -295,30 +626,54 @@ async def verify_media_model(
         create_media_provider,
     )
 
-    config = MediaProviderConfig(
+    media_mod = importlib.import_module("octop_harness.media")
+    supported_providers = getattr(media_mod, "BUILTIN_MEDIA_PROVIDERS", ())
+    if supported_providers and item.provider not in supported_providers:
+        return {
+            "ok": False,
+            "error": (
+                f"Installed octop-harness does not support provider {item.provider!r}; "
+                "upgrade octop-harness."
+            ),
+        }
+
+    config = _construct_dataclass_compat(
+        MediaProviderConfig,
         id=item.id,
         provider=item.provider,
         api_key=api_key,
         base_url=item.base_url,
         image_model=item.image_model,
         video_model=item.video_model,
+        three_d_model=item.three_d_model,
         image_enabled=item.image_enabled,
         video_enabled=item.video_enabled,
+        three_d_enabled=item.three_d_enabled,
     )
     provider = create_media_provider(config)
     try:
         if kind == "image":
+            image_model = item.image_model.strip().lower()
+            reference_images = (
+                (_minimal_test_png_data_url(320),) if image_model.endswith("-edit") else ()
+            )
             submission = await provider.submit_image(
                 ImageGenerationRequest(
                     prompt="A plain blue circle centered on a white background.",
+                    reference_images=reference_images,
                     count=1,
                     watermark=False,
                 )
             )
-        else:
+        elif kind == "video":
+            video_model = item.video_model.strip().lower()
+            first_frame = (
+                _minimal_test_png_data_url(320) if video_model in _IMAGE_ONLY_VIDEO_MODELS else None
+            )
             submission = await provider.submit_video(
                 VideoGenerationRequest(
                     prompt="A static blue circle on a white background.",
+                    first_frame=first_frame,
                     duration=5,
                     aspect_ratio="16:9",
                     resolution="480p",
@@ -326,6 +681,24 @@ async def verify_media_model(
                     watermark=False,
                 )
             )
+        else:
+            three_d_req_cls = getattr(media_mod, "ThreeDGenerationRequest", None)
+            submit_3d = getattr(provider, "submit_3d", None)
+            if three_d_req_cls is None or submit_3d is None:
+                return {
+                    "ok": False,
+                    "error": (
+                        "Installed octop-harness does not support 3D generation; "
+                        "upgrade octop-harness."
+                    ),
+                }
+            three_d_model = item.three_d_model.strip().lower()
+            three_d_request = (
+                three_d_req_cls(image=_minimal_test_png_data_url(320))
+                if three_d_model in _IMAGE_ONLY_3D_MODELS
+                else three_d_req_cls(prompt="A simple blue sphere.")
+            )
+            submission = await submit_3d(three_d_request)
         if submission.task is not None:
             await provider.cancel(submission.task)
     except (MediaGenerationError, ValueError) as exc:
@@ -380,6 +753,16 @@ class MediaGenerationSettingsStore:
                             raw.get("video_model") or preset.default_video_model
                         ).strip(),
                         api_key_set=bool(credentials.get(provider_id)),
+                        three_d_enabled=(
+                            bool(raw.get("three_d_enabled", False))
+                            if preset.supports_three_d
+                            else False
+                        ),
+                        three_d_model=(
+                            str(raw.get("three_d_model") or preset.default_three_d_model).strip()
+                            if preset.supports_three_d
+                            else ""
+                        ),
                     )
                 )
         return MediaGenerationSettings(
@@ -387,6 +770,7 @@ class MediaGenerationSettingsStore:
             providers=tuple(providers),
             default_image_provider=_optional_string(payload.get("default_image_provider")),
             default_video_provider=_optional_string(payload.get("default_video_provider")),
+            default_three_d_provider=_optional_string(payload.get("default_three_d_provider")),
         )
 
     def _load_legacy(self) -> MediaGenerationSettings:
@@ -404,12 +788,15 @@ class MediaGenerationSettingsStore:
             image_model=(self._settings.get(_KEY_IMAGE_MODEL) or DEFAULT_IMAGE_MODEL).strip(),
             video_model=(self._settings.get(_KEY_VIDEO_MODEL) or DEFAULT_VIDEO_MODEL).strip(),
             api_key_set=bool(credentials.get(DEFAULT_PROVIDER_ID)),
+            three_d_enabled=False,
+            three_d_model="",
         )
         return MediaGenerationSettings(
             enabled=_stored_bool(self._settings, _KEY_ENABLED, default=False),
             providers=(provider,),
             default_image_provider=DEFAULT_PROVIDER_ID if image_enabled else None,
             default_video_provider=DEFAULT_PROVIDER_ID if video_enabled else None,
+            default_three_d_provider=None,
         )
 
     def save(
@@ -419,6 +806,7 @@ class MediaGenerationSettingsStore:
         providers: list[MediaProviderUpdate],
         default_image_provider: str | None,
         default_video_provider: str | None,
+        default_three_d_provider: str | None = None,
     ) -> MediaGenerationSettings:
         if len(providers) > _MAX_PROVIDERS:
             raise _bad_args(f"at most {_MAX_PROVIDERS} media providers are allowed")
@@ -445,6 +833,7 @@ class MediaGenerationSettingsStore:
 
         image_route = _optional_string(default_image_provider)
         video_route = _optional_string(default_video_provider)
+        three_d_route = _optional_string(default_three_d_provider)
         by_id = {item.id: item for item in normalized}
         self._validate_route(
             kind="image",
@@ -457,6 +846,14 @@ class MediaGenerationSettingsStore:
         self._validate_route(
             kind="video",
             route=video_route,
+            enabled=enabled,
+            providers=normalized,
+            by_id=by_id,
+            credentials=credentials,
+        )
+        self._validate_route(
+            kind="3d",
+            route=three_d_route,
             enabled=enabled,
             providers=normalized,
             by_id=by_id,
@@ -481,13 +878,16 @@ class MediaGenerationSettingsStore:
                     "base_url": item.base_url,
                     "image_enabled": item.image_enabled,
                     "video_enabled": item.video_enabled,
+                    "three_d_enabled": item.three_d_enabled,
                     "image_model": item.image_model,
                     "video_model": item.video_model,
+                    "three_d_model": item.three_d_model,
                 }
                 for item in normalized
             ],
             "default_image_provider": image_route,
             "default_video_provider": video_route,
+            "default_three_d_provider": three_d_route,
         }
         self._settings.set(
             _KEY_CONFIG,
@@ -505,15 +905,16 @@ class MediaGenerationSettingsStore:
         by_id: dict[str, MediaProviderUpdate],
         credentials: dict[str, str],
     ) -> None:
-        capable = [item for item in providers if item.enabled and getattr(item, f"{kind}_enabled")]
+        enabled_attr = _kind_enabled_attr(kind)
+        capable = [item for item in providers if item.enabled and getattr(item, enabled_attr)]
         if enabled and capable and route is None:
-            raise _bad_args(f"default_{kind}_provider is required")
+            raise _bad_args(f"{_kind_route_field(kind)} is required")
         if route is None:
             return
         target = by_id.get(route)
         if target is None:
             raise _bad_args(f"default {kind} provider {route!r} does not exist")
-        if not target.enabled or not getattr(target, f"{kind}_enabled"):
+        if not target.enabled or not getattr(target, enabled_attr):
             raise _bad_args(f"provider {route!r} does not enable {kind} generation")
         if enabled and not credentials.get(route):
             raise _bad_args(f"API key is required for provider {route!r}")
@@ -550,6 +951,21 @@ class MediaGenerationSettingsStore:
             base_url=normalized.base_url,
         )
 
+    async def fetch_models(
+        self,
+        item: MediaProviderUpdate,
+    ) -> dict[str, object]:
+        normalized = _normalized_update(item)
+        _validate_provider(normalized)
+        key = normalized.api_key or self.api_key(normalized.id)
+        if not key:
+            raise _bad_args(f"API key is required for provider {normalized.id!r}")
+        return await fetch_media_provider_models(
+            normalized.provider,
+            key,
+            base_url=normalized.base_url,
+        )
+
     async def test_model(
         self,
         item: MediaProviderUpdate,
@@ -558,7 +974,7 @@ class MediaGenerationSettingsStore:
     ) -> dict[str, object]:
         normalized = _normalized_update(item)
         _validate_provider(normalized)
-        if not getattr(normalized, f"{kind}_enabled"):
+        if not getattr(normalized, _kind_enabled_attr(kind)):
             raise _bad_args(f"provider {normalized.id!r} does not enable {kind}")
         key = normalized.api_key or self.api_key(normalized.id)
         if not key:
@@ -576,26 +992,35 @@ class MediaGenerationSettingsStore:
             MediaProviderConfig,
         )
 
+        media_mod = importlib.import_module("octop_harness.media")
+        supported_providers = set(getattr(media_mod, "BUILTIN_MEDIA_PROVIDERS", ()))
+
         credentials = self._credentials()
         providers = [
-            MediaProviderConfig(
+            _construct_dataclass_compat(
+                MediaProviderConfig,
                 id=item.id,
                 provider=item.provider,
                 api_key=credentials[item.id],
                 base_url=item.base_url,
                 image_model=item.image_model,
                 video_model=item.video_model,
+                three_d_model=item.three_d_model,
                 enabled=item.enabled,
                 image_enabled=item.image_enabled,
                 video_enabled=item.video_enabled,
+                three_d_enabled=item.three_d_enabled,
             )
             for item in view.providers
-            if item.enabled and credentials.get(item.id)
+            if item.enabled
+            and credentials.get(item.id)
+            and (not supported_providers or item.provider in supported_providers)
         ]
         if not providers:
             return None
         provider_ids = {item.id for item in providers}
-        return MediaGenerationConfig(
+        config: MediaGenerationConfig = _construct_dataclass_compat(
+            MediaGenerationConfig,
             providers=providers,
             default_image_provider=(
                 view.default_image_provider if view.default_image_provider in provider_ids else None
@@ -603,7 +1028,13 @@ class MediaGenerationSettingsStore:
             default_video_provider=(
                 view.default_video_provider if view.default_video_provider in provider_ids else None
             ),
+            default_three_d_provider=(
+                view.default_three_d_provider
+                if view.default_three_d_provider in provider_ids
+                else None
+            ),
         )
+        return config
 
 
 def _optional_string(value: object) -> str | None:
@@ -623,6 +1054,7 @@ __all__ = [
     "MediaProviderPreset",
     "MediaProviderSettings",
     "MediaProviderUpdate",
+    "fetch_media_provider_models",
     "verify_media_credentials",
     "verify_media_model",
 ]

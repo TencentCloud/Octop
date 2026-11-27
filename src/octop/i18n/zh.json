@@ -738,6 +738,7 @@
     "ask_user_question": "向你提问",
     "generate_image": "生成图片",
     "generate_video": "生成视频",
+    "generate_3d": "生成 3D 模型",
     "bilibili_search_anime": "搜索番剧",
     "search_arxiv": "查询 arXiv 论文"
   },
