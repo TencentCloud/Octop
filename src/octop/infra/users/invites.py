@@ -1,4 +1,4 @@
-"""One-time user invite codes — create, validate, redeem."""
+"""User invite codes — create, validate, redeem."""
 
 from __future__ import annotations
 
@@ -17,11 +17,14 @@ from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.password import hash_password, validate_password_policy
+from octop.infra.users.permissions import assert_can_assign_permissions
 from octop.infra.utils.locale import normalize_locale
 
 DEFAULT_EXPIRES_DAYS = 7
 MIN_EXPIRES_DAYS = 1
 MAX_EXPIRES_DAYS = 90
+DEFAULT_MAX_USES = 1
+MAX_INVITE_USES = 2_147_483_647
 _CODE_ALPHABET = string.ascii_letters + string.digits
 _CODE_LENGTH = 11
 
@@ -79,6 +82,7 @@ class InviteService:
         actor_username: str,
         note: str | None = None,
         expires_in_days: int = DEFAULT_EXPIRES_DAYS,
+        max_uses: int = DEFAULT_MAX_USES,
         role_name: str | None = None,
         role: str | None = None,
     ) -> InviteRow:
@@ -102,6 +106,7 @@ class InviteService:
                     created_by=created_by,
                     expires_at=expires_at,
                     note=cleaned,
+                    max_uses=max_uses,
                     role_name=role_name,
                     role=role,
                 )
@@ -116,39 +121,57 @@ class InviteService:
     def list_all(self) -> list[dict[str, object]]:
         return [invite_status_payload(row) for row in self._repo.list_all()]
 
-    def revoke(self, invite_id: int, *, actor_username: str) -> dict[str, object]:
-        before = self._repo.get(invite_id)
-        if before is None:
-            raise OctopError(ErrorCode.NOT_FOUND, "invite not found")
-        if before.status() != "pending":
+    def set_enabled(self, invite_id: int, *, enabled: bool, actor: User) -> dict[str, object]:
+        if enabled and not actor.is_admin:
+            invite = self._repo.get(invite_id)
+            if invite is None:
+                raise OctopError(ErrorCode.NOT_FOUND, "invite not found")
+            role_id, permissions, _, _ = _role_defaults_for_invite(self._services.db, invite)
+            if role_id == Role.ADMIN:
+                raise OctopError(
+                    ErrorCode.FORBIDDEN,
+                    "only an administrator can invite the administrator role",
+                )
+            assert_can_assign_permissions(actor, permissions)
+        try:
+            after = self._repo.set_enabled(invite_id, enabled)
+        except ValueError as exc:
             raise OctopError(
-                ErrorCode.INVITE_INVALID,
-                f"invite cannot be revoked (status={before.status()})",
-                status=409,
-            )
-        after = self._repo.revoke(invite_id)
-        assert after is not None
+                ErrorCode.INVITE_EXHAUSTED, "invite has reached its registration limit"
+            ) from exc
+        if after is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "invite not found")
         self._services.audit_repo.write(
-            actor=actor_username,
-            action="invite.revoke",
+            actor=actor.username,
+            action="invite.enable" if enabled else "invite.disable",
             target=after.code,
         )
         return invite_status_payload(after)
+
+    def list_users(self, invite_id: int, *, page: int, page_size: int) -> dict[str, object]:
+        if self._repo.get(invite_id) is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "invite not found")
+        users, total = self._repo.list_users(
+            invite_id, limit=page_size, offset=(page - 1) * page_size
+        )
+        return {"users": users, "total": total, "page": page, "page_size": page_size}
+
+    def _usable_invite(self, code: str) -> InviteRow:
+        row = self._repo.get_by_code(code)
+        if row is None:
+            raise OctopError(ErrorCode.INVITE_INVALID, "invite not found")
+        status = row.status()
+        if status == "expired":
+            raise OctopError(ErrorCode.INVITE_EXPIRED, "invite expired")
+        if status == "disabled":
+            raise OctopError(ErrorCode.INVITE_DISABLED, "invite disabled")
+        return row
 
     def validate(self, code: str) -> dict[str, object]:
         cleaned = (code or "").strip()
         if not cleaned:
             raise OctopError(ErrorCode.INVITE_INVALID, "invite code required", status=400)
-        row = self._repo.get_by_code(cleaned)
-        if row is None:
-            raise OctopError(ErrorCode.INVITE_INVALID, "invite not found")
-        status = row.status()
-        if status == "used":
-            raise OctopError(ErrorCode.INVITE_USED, "invite already used")
-        if status == "expired":
-            raise OctopError(ErrorCode.INVITE_EXPIRED, "invite expired")
-        if status == "revoked":
-            raise OctopError(ErrorCode.INVITE_REVOKED, "invite revoked")
+        row = self._usable_invite(cleaned)
         _role_defaults_for_invite(self._services.db, row)
         return {"ok": True, "expires_at": row.expires_at}
 
@@ -171,6 +194,14 @@ class InviteService:
             raise OctopError(ErrorCode.INVITE_INVALID, "invite code required", status=400)
         if not cleaned_username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty", status=400)
+        from octop.infra.utils.paths import is_single_path_segment
+
+        if not is_single_path_segment(cleaned_username):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "username must be a single directory name",
+                status=400,
+            )
         validate_password_policy(password)
         loc = normalize_locale(locale)
         name = display_name.strip() if isinstance(display_name, str) else None
@@ -179,7 +210,7 @@ class InviteService:
         normalized_email = parse_optional_email(email)
         account_role, perm_list, policy_pairs, role_name = _role_defaults_for_invite(
             self._services.db,
-            self._repo.get_by_code(cleaned_code),
+            self._usable_invite(cleaned_code),
         )
         try:
             user_id, _invite = self._repo.redeem_creating_user(
@@ -208,12 +239,10 @@ class InviteService:
                     ErrorCode.EMAIL_TAKEN,
                     f"email {normalized_email!r} already exists",
                 ) from exc
-            if reason == "used":
-                raise OctopError(ErrorCode.INVITE_USED, "invite already used") from exc
             if reason == "expired":
                 raise OctopError(ErrorCode.INVITE_EXPIRED, "invite expired") from exc
-            if reason == "revoked":
-                raise OctopError(ErrorCode.INVITE_REVOKED, "invite revoked") from exc
+            if reason == "disabled":
+                raise OctopError(ErrorCode.INVITE_DISABLED, "invite disabled") from exc
             raise OctopError(ErrorCode.INVITE_INVALID, "invite not usable") from exc
 
         user = User(

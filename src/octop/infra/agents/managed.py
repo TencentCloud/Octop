@@ -81,6 +81,7 @@ _RUNNER_PROJECT_ROOTS: dict[str, str] = {
     "cursor_cli": ".cursor",
     "kimi_code": ".kimi",
     "pi": ".pi",
+    "qwen_code": ".qwen",
 }
 _DEFAULT_PROJECT_ROOT = ".octop"
 

@@ -1,5 +1,7 @@
+import i18n from "../../i18n";
+import { requestStream } from "../request";
+import { apiErrorMessage } from "../../utils/apiError";
 import { request, getAuthToken } from "../request";
-import { getApiUrl } from "../config";
 
 export type MobileSetupState =
   | "needs_device"
@@ -33,7 +35,6 @@ function streamMobileSse(
   onDone: (ok: boolean, error?: string) => void,
 ): AbortController {
   const controller = new AbortController();
-  const url = getApiUrl(path);
   const token = getAuthToken();
 
   // ``onDone`` is the only thing that moves the caller out of its "installing"
@@ -50,7 +51,7 @@ function streamMobileSse(
     onDone(ok, error);
   };
 
-  fetch(url, {
+  requestStream(path, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -58,10 +59,6 @@ function streamMobileSse(
     signal: controller.signal,
   })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        settle(false, `HTTP ${res.status}`);
-        return;
-      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -98,7 +95,7 @@ function streamMobileSse(
     })
     .catch((err: unknown) => {
       if ((err as Error).name !== "AbortError") {
-        settle(false, String(err));
+        settle(false, apiErrorMessage(err, "Request failed", i18n.t));
       }
     });
   return controller;

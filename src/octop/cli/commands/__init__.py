@@ -1,1 +1,1 @@
-"""Click command modules (one file per top-level `octop` subcommand)."""
+"""Click command modules (one module per top-level `octop` subcommand)."""

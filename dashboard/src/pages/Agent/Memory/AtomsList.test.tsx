@@ -13,11 +13,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { makeAtom, listAtomsResp } from "../../../test/memoryFixtures";
+import {
+  makeAtom,
+  makeCandidate,
+  listAtomsResp,
+} from "../../../test/memoryFixtures";
 
 vi.mock("../../../api/modules/memoryDashboard", () => ({
   memoryDashboardApi: {
     listAtoms: vi.fn(),
+    getCandidate: vi.fn().mockResolvedValue(null),
     listEntities: vi
       .fn()
       .mockResolvedValue({ items: [], total: 0, has_more: false }),
@@ -133,6 +138,31 @@ describe("<AtomsList />", () => {
         screen.getAllByText(/每天早上都喝美式咖啡/).length,
       ).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it("shows repeat evidence only when it belongs to this version", async () => {
+    api.listAtoms.mockResolvedValue(
+      listAtomsResp([
+        makeAtom({
+          assertion: "周报使用中文。",
+          raw_event_ids: ["raw-1", "raw-2"],
+        }),
+      ]),
+    );
+    api.getCandidate.mockResolvedValueOnce(
+      makeCandidate({
+        payload: {
+          evidence_quotes: {
+            "raw-2": "周报还是用中文。",
+            "raw-3": "以后周报改成双语。",
+          },
+        },
+      }),
+    );
+    render(<AtomsList agentId="ZYWZTD" />);
+    await userEvent.click(await screen.findByText("周报使用中文。"));
+    expect(await screen.findByText(/周报还是用中文/)).toBeInTheDocument();
+    expect(screen.queryByText(/以后周报改成双语/)).not.toBeInTheDocument();
   });
 
   it("shows the audit record instead of presenting old evidence as the corrected assertion", async () => {

@@ -475,6 +475,8 @@ class SqliteKnowledgeGraphStore(KnowledgeGraphStore):
     def _connect(self) -> Any:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self._path)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        conn.execute("PRAGMA journal_mode = WAL")
         self._prepare(conn)
         return conn
 

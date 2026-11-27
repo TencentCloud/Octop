@@ -23,8 +23,9 @@ import {
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import { ApiResponseError } from "../../../../../api/responseError";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import { isEmbeddingModel, providerHasCredential } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
@@ -107,7 +108,7 @@ export function ProviderConfigModal({
   const [form] = Form.useForm<ProviderConfigForm>();
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
-  const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
+  const hasApiKey = providerHasCredential(provider);
   const isOllama = looksLikeOllamaProvider(provider);
   const isOnnx = isOnnxProviderRow(provider);
   const isMagpie = isMagpieProvider(provider);
@@ -206,7 +207,11 @@ export function ProviderConfigModal({
       setOllamaUnavailable(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("503") || msg.includes("connect")) {
+      if (
+        (err instanceof ApiResponseError && err.status === 503) ||
+        msg.includes("503") ||
+        msg.includes("connect")
+      ) {
         setOllamaUnavailable(true);
       }
       setOllamaModels([]);
@@ -421,6 +426,7 @@ export function ProviderConfigModal({
       if (isOllama) {
         const msg = err instanceof Error ? err.message : String(err);
         if (
+          (err instanceof ApiResponseError && err.status === 503) ||
           msg.includes("503") ||
           msg.includes("connect") ||
           msg.includes("disabled")
@@ -722,11 +728,11 @@ export function ProviderConfigModal({
 
       const modelsForSave =
         embeddingLane && !isOnnx
-          ? draftModels.map((m) => ({
-              ...m,
-              embedding: true,
-              task: "embedding",
-            }))
+          ? draftModels.map((m) =>
+              isEmbeddingModel(m, true)
+                ? { ...m, embedding: true, task: "embedding" }
+                : m,
+            )
           : draftModels;
       const modelsChanged =
         JSON.stringify(
@@ -855,7 +861,8 @@ export function ProviderConfigModal({
           ? await testProviderDraft({
               name: provider.name,
               kind: provider.kind,
-              api_key: draftApiKey || provider.api_key || undefined,
+              api_key: draftApiKey || undefined,
+              provider_id: draftApiKey ? undefined : provider.id,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
               api_mode: apiMode,
@@ -950,8 +957,7 @@ export function ProviderConfigModal({
       }
       const draftApiKey = (values.api_key as string | undefined)?.trim();
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
-      const apiKey = draftApiKey || provider.api_key || "";
-      if (!apiKey) {
+      if (!draftApiKey && !hasApiKey) {
         message.warning(t("models.pleaseEnterApiKey"));
         return;
       }
@@ -959,7 +965,8 @@ export function ProviderConfigModal({
       setFetchingModels(true);
       const result = await fetchProviderModels({
         kind: "openai",
-        api_key: apiKey,
+        api_key: draftApiKey || undefined,
+        provider_id: draftApiKey ? undefined : provider.id,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
         extra_json: isMagpie ? magpieIntegrationExtra() : undefined,

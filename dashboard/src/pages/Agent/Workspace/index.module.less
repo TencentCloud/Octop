@@ -768,3 +768,765 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+// --- Git changes section (embedded workspace panel) ------------------------
+
+.gitPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gitPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  font-size: 13px;
+}
+
+.gitPanelBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.gitPanelList {
+  width: 300px;
+  flex-shrink: 0;
+  overflow: auto;
+  border-right: 1px solid var(--fn-border-secondary);
+}
+
+.gitPanelDiff {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gitPanelEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gitNotice {
+  padding: 4px 10px 8px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitSpin {
+  animation: gitSpin 1s linear infinite;
+}
+
+@keyframes gitSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gitCommitRow {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.gitGroupTitle {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fn-text-tertiary);
+}
+
+.gitEmpty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitBarSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-secondary);
+}
+
+.gitRowSelected {
+  background: var(--fn-bg-hover);
+}
+
+.gitRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
+.gitRowStatus {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #9a6700;
+}
+
+.gitRowStatusM,
+.gitRowStatusT {
+  color: #9a6700;
+}
+
+.gitRowStatusA {
+  color: #1a7f37;
+}
+
+.gitRowStatusD,
+.gitRowStatusX {
+  color: #cf222e;
+}
+
+.gitRowStatusR,
+.gitRowStatusC {
+  color: #0969da;
+}
+
+.gitRowStatusU {
+  color: #8250df;
+}
+
+.gitRowName {
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitRowDir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-tertiary);
+}
+
+.gitRowAdded {
+  flex-shrink: 0;
+  color: #1a7f37;
+}
+
+.gitRowRemoved {
+  flex-shrink: 0;
+  color: #cf222e;
+}
+
+.gitRowActions {
+  /* Always occupy layout space; only fade in on hover so row height and
+     width never change (avoids list jitter). */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+
+  > button {
+    border: 1px solid var(--fn-border-secondary);
+    background: transparent;
+    color: var(--fn-text-secondary);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    line-height: 1.5;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+
+    &:hover:not(:disabled) {
+      color: var(--fn-text-primary);
+      border-color: var(--fn-border-strong, var(--fn-border-secondary));
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.gitRow:hover .gitRowActions,
+.gitRow:focus-within .gitRowActions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gitLogToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 10px 2px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.gitLog {
+  padding: 2px 10px 6px;
+}
+
+.gitLogRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.gitLogSha {
+  flex-shrink: 0;
+  color: #8250df;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+}
+
+.gitLogMeta {
+  flex-shrink: 0;
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+}
+
+.gitLogSubject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-secondary);
+}
+
+.gitLogLoading {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.treeGitBadge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #9a6700;
+}
+
+.treeGitBadgeM,
+.treeGitBadgeT {
+  color: #9a6700;
+}
+
+.treeGitBadgeA {
+  color: #1a7f37;
+}
+
+.treeGitBadgeD,
+.treeGitBadgeX {
+  color: #cf222e;
+}
+
+.treeGitBadgeR,
+.treeGitBadgeC {
+  color: #0969da;
+}
+
+.treeGitBadgeU {
+  color: #8250df;
+}
+
+.treeGitBadgeDot {
+  color: #1a7f37;
+  font-size: 8px;
+}
+
+// --- Git diff view ---------------------------------------------------------
+
+// Row tints live on custom properties so the row background and the sticky
+// gutter's opaque composite share one source; drift would only show while
+// scrolled horizontally.
+@gitDiffGutterWidth: 46px;
+
+// One definition per row kind: the row background and the sticky gutter's
+// opaque composite must consume the same tint pair.
+.gitDiffTint(@color; @pct) {
+  --git-diff-tint-color: @color;
+  --git-diff-tint-pct: @pct;
+  background: color-mix(in srgb, @color @pct, transparent);
+}
+
+.gitDiff {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  // Own surface (host-overridable) so the gutter composite always matches
+  // the row base: hosts like the antd modal paint their own content color,
+  // and a gutter pinned to a global token would show a visible strip there.
+  // The fallback lives at each use site — declaring the property here would
+  // shadow any value inherited from the host.
+  background: var(--git-diff-surface, var(--fn-bg-primary));
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gitDiffWrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.gitDiffTruncated {
+  // Outside the horizontally scrolling block so it stays a full-width
+  // banner instead of scrolling away with the diff.
+  margin: 8px 10px 0;
+  flex-shrink: 0;
+}
+
+.gitDiffRows {
+  display: flex;
+  flex-direction: column;
+  // Rows size to the widest line so the whole diff scrolls as one block in
+  // the single .gitDiff scroll container — never one scrollbar per row.
+  width: max-content;
+  min-width: 100%;
+}
+
+.gitDiffRow {
+  display: flex;
+  align-items: stretch;
+  white-space: pre;
+}
+
+.gitDiffNo {
+  flex-shrink: 0;
+  width: @gitDiffGutterWidth;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--fn-text-quaternary, var(--fn-text-tertiary));
+  user-select: none;
+  overflow: hidden;
+  // Pin the gutter while the whole diff scrolls horizontally. The opaque
+  // background is the row tint (inherited custom properties, defaulting to
+  // none) composited over the diff surface, so scrolled text cannot show
+  // through the translucent row colors.
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  background: color-mix(
+    in srgb,
+    var(--git-diff-tint-color, transparent) var(--git-diff-tint-pct, 0%),
+    var(--git-diff-surface, var(--fn-bg-primary))
+  );
+}
+
+// Second gutter (old-number column) pins one gutter width in. Assumes the
+// two-column layout rendered by GitDiffView; a third column would need its
+// own offset.
+.gitDiffNo + .gitDiffNo {
+  left: @gitDiffGutterWidth;
+}
+
+.gitDiffText {
+  flex: 1;
+  white-space: pre;
+  padding-right: 10px;
+}
+
+.gitDiffRow_add {
+  .gitDiffTint(rgb(46, 160, 67); 14%);
+  .gitDiffText {
+    color: #1a7f37;
+  }
+}
+
+.gitDiffRow_del {
+  .gitDiffTint(rgb(248, 81, 73); 14%);
+  .gitDiffText {
+    color: #cf222e;
+  }
+}
+
+.gitDiffRow_hunk {
+  .gitDiffTint(rgb(9, 105, 218); 8%);
+  color: var(--fn-text-secondary);
+}
+
+.gitDiffRow_meta {
+  color: var(--fn-text-tertiary);
+}
+
+.gitDiffRow_ctx .gitDiffText {
+  color: var(--fn-text-secondary);
+}
+
+.gitDiffEmpty {
+  padding: 24px;
+  text-align: center;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.gitDiffHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+}
+
+.gitDiffHeaderPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fn-text-primary);
+}
+
+// --- Git tools quick card / commit dialog / history ------------------------
+
+.gitToolsCard {
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-primary);
+}
+
+.gitToolsHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 12px;
+  line-height: 1;
+}
+
+.gitToolsBranch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--fn-text-primary);
+
+  svg {
+    display: block;
+  }
+}
+
+.gitToolsBranchName {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitToolsStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--fn-border-primary);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--fn-text-secondary);
+
+  svg {
+    display: block;
+  }
+}
+
+.gitToolsMeta {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--fn-text-tertiary);
+}
+
+.gitToolsSpacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.gitCommitTotals {
+  flex-shrink: 0;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.gitCommitDialog :global(.octop-modal-body) {
+  padding: 20px 24px 16px;
+}
+
+.gitCommitDialogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 14px;
+}
+
+.gitCommitBranch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+}
+
+.gitCommitMessageWrap {
+  position: relative;
+}
+
+.gitCommitMessageWrap textarea {
+  padding: 4px 36px 4px 2px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.65;
+  resize: none;
+
+  &:focus {
+    border: none;
+    box-shadow: none;
+  }
+}
+
+.gitCommitGenerate {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitCommitInclude {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 2px 10px;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+  cursor: pointer;
+}
+
+.gitCommitIncludeCount {
+  margin-left: auto;
+  color: var(--fn-text-tertiary);
+}
+
+.gitCommitActions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--fn-border-primary);
+}
+
+.gitCommitAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.gitCommitActionSelected {
+  background: var(--fn-bg-secondary);
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+}
+
+.gitCommitActionIcon {
+  display: inline-flex;
+  width: 18px;
+  justify-content: center;
+  color: var(--fn-text-secondary);
+}
+
+.gitCommitKbd {
+  margin-left: auto;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitHistory {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gitHistoryRows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 12px;
+  font-size: 12px;
+}
+
+.gitHistoryGraphOnly {
+  display: grid;
+  grid-template-columns: 64px 52px minmax(0, 96px) minmax(0, 1fr) 92px 118px 58px;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+}
+
+.gitHistoryGraph {
+  overflow: hidden;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  color: #1a7f37;
+  white-space: pre;
+}
+
+.gitHistoryRow {
+  display: grid;
+  grid-template-columns: 64px 52px minmax(0, 96px) minmax(0, 1fr) 92px 118px 58px;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 24px;
+  padding: 1px 8px;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
+.gitHistoryRefs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gitHistoryRef {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #0969da;
+  background: rgba(9, 105, 218, 0.12);
+}
+
+.gitHistorySubject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-primary);
+}
+
+.gitHistoryCommitter {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--fn-text-secondary);
+}
+
+.gitHistoryDate {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fn-text-tertiary);
+}
+
+.gitHistorySignature {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-self: start;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitHistorySignature_good {
+  color: #1a7f37;
+}
+
+.gitHistorySignature_bad {
+  color: #cf222e;
+}
+
+.gitHistorySignature_warn {
+  color: #9a6700;
+}
+
+.gitHistorySignature_muted {
+  color: var(--fn-text-tertiary);
+}

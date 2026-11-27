@@ -70,6 +70,25 @@ def row_for_probe(
     )
 
 
+async def probe_webdav_backend(row: BackendRow) -> dict[str, Any]:
+    """Async connectivity probe for WebDAV (backup remote; not agent-resolvable).
+
+    Does not require the row to be enabled — admins may test before re-enabling.
+    """
+    from octop.infra.backup.remote.registry import get_provider
+    from octop.infra.backup.remote.resolve import provider_kwargs_from_backend
+    from octop.infra.errors import OctopError
+
+    try:
+        provider = get_provider("webdav", **provider_kwargs_from_backend(row))
+        await provider.test()
+    except OctopError as exc:
+        return {"ok": False, "message": str(exc.message)}
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        return {"ok": False, "message": f"WebDAV probe failed: {exc}"}
+    return {"ok": True}
+
+
 def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     """Return ``{ok: bool, message?: str, message_key?: str}`` after a probe."""
     kind = (row.kind or "").lower()
@@ -80,11 +99,20 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     if kind == "opensandbox":
         return _probe_opensandbox(row)
 
+    if kind == "cubesandbox":
+        return _probe_cubesandbox(row)
+
     if kind == "tos":
         spec = row_to_backend_spec(row)
         if spec is None:
             return {"ok": False, "message": "configuration incomplete"}
         return _probe_tos(spec)
+
+    if kind == "webdav":
+        return {
+            "ok": False,
+            "message": "WebDAV probe requires the async probe_webdav_backend helper",
+        }
 
     spec = row_to_backend_spec(row)
     if spec is None:
@@ -235,6 +263,43 @@ def _probe_opensandbox(row: BackendRow) -> dict[str, Any]:
     if result.get("ok"):
         result["message_key"] = "opensandbox_probe_ok"
     return result
+
+
+def _probe_cubesandbox(row: BackendRow) -> dict[str, Any]:
+    """Check the command and file APIs in a disposable sandbox."""
+    from octop_harness.backends.cube_sandbox import CubeSandbox
+
+    spec = row_to_backend_spec(row)
+    if spec is None:
+        return {"ok": False, "message": "CubeSandbox template ID is required"}
+
+    sandbox = None
+    path = "/tmp/octop-backend-probe.txt"
+    content = _PROBE_CONTENT.encode()
+    try:
+        sandbox = CubeSandbox(template=spec["template"], timeout=120, command_timeout=15)
+        uploaded = sandbox.upload_files([(path, content)])[0]
+        if uploaded.error:
+            return {"ok": False, "message": f"CubeSandbox upload failed: {uploaded.error}"}
+        result = sandbox.execute(f"test -s {path}")
+        if result.exit_code:
+            return {"ok": False, "message": "CubeSandbox command probe failed"}
+        downloaded = sandbox.download_files([path])[0]
+        if downloaded.error or downloaded.content != content:
+            return {"ok": False, "message": "CubeSandbox read-back failed"}
+        return {"ok": True, "message_key": "cubesandbox_probe_ok"}
+    except Exception as exc:
+        logger.info("CubeSandbox probe failed: %s", exc)
+        return {"ok": False, "message": str(exc)}
+    finally:
+        if sandbox is not None:
+            try:
+                sandbox.destroy()
+            except Exception:
+                logger.warning("Could not destroy CubeSandbox probe sandbox", exc_info=True)
+            finally:
+                with contextlib.suppress(Exception):
+                    sandbox.close()
 
 
 def _probe_tos(spec: dict[str, Any]) -> dict[str, Any]:

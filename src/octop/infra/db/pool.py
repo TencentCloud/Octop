@@ -7,9 +7,11 @@ import re
 import sqlite3
 import threading
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+SQLITE_BUSY_TIMEOUT_MS = 30_000
 
 
 def qmark_to_pyformat(sql: str) -> str:
@@ -45,6 +47,7 @@ class SqlitePool:
             isolation_level=None,
         )
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         # WAL + FULL fsyncs every autocommit statement. On Windows that is
@@ -96,6 +99,9 @@ class SqlitePool:
             conn = self._conn
             self._conn = None
             if conn is not None:
+                if not conn.in_transaction:
+                    with suppress(sqlite3.Error):
+                        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 conn.close()
 
 

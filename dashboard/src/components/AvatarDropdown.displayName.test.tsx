@@ -2,11 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+// One stable ``t`` like real react-i18next. A new function per render changes
+// AccountSecurityDrawer's ``loadStatus`` callback on every render, so its load
+// effect re-runs forever and the drawer never leaves its spinner.
+const i18nMock = vi.hoisted(() => ({
+  t: (key: string) => key,
+  i18n: { language: "zh" },
+}));
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "zh" },
-  }),
+  useTranslation: () => i18nMock,
 }));
 
 vi.mock("react-router-dom", () => ({

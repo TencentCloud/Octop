@@ -257,9 +257,9 @@ export default function CandidatesReview({ agentId }: Props) {
                   <div className={styles.candidateTitle}>
                     {c.title || c.assertion}
                   </div>
-                  <div className={styles.candidateMeta}>
-                    “{c.verbatim_quote}” · {c.subject_name}
-                  </div>
+                  {c.title && c.assertion !== c.title && (
+                    <div className={styles.candidateMeta}>{c.assertion}</div>
+                  )}
                 </div>
                 <div className={styles.candidateActions}>
                   <Popconfirm
@@ -330,9 +330,15 @@ export default function CandidatesReview({ agentId }: Props) {
             <Typography.Title level={5}>草稿内容</Typography.Title>
             <Typography.Paragraph>{selected.assertion}</Typography.Paragraph>
             <Typography.Title level={5}>原话依据</Typography.Title>
-            <Typography.Paragraph type="secondary">
-              “{selected.verbatim_quote}”
-            </Typography.Paragraph>
+            {Object.entries(
+              selected.payload?.evidence_quotes ?? {
+                [selected.quote_event_id]: selected.verbatim_quote,
+              },
+            ).map(([eventId, quote]) => (
+              <Typography.Paragraph type="secondary" key={eventId}>
+                “{quote}”
+              </Typography.Paragraph>
+            ))}
             <Typography.Title level={5}>Octop 的建议</Typography.Title>
             <Typography.Paragraph>
               {selected.recommended_action}

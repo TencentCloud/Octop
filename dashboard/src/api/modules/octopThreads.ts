@@ -168,6 +168,47 @@ export interface HistoryMigrationStatus {
 
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
+export interface ThreadShareLink {
+  active: boolean;
+  share_id?: string | null;
+  created_at?: number | null;
+}
+
+export interface PublicShareMessage {
+  role: "user" | "assistant" | "tool";
+  content: unknown;
+  timestamp?: number;
+  author_name?: string;
+  /** Preset portrait key; public pages never get signed-in ``/api/`` avatars. */
+  author_avatar_icon?: string;
+  author_avatar_url?: string;
+  speaker_name?: string;
+  speaker_icon_url?: string;
+  speaker_icon_name?: string;
+  speaker_color?: string;
+  decision?: unknown;
+}
+
+export interface PublicShareView {
+  title: string;
+  agent_name: string;
+  timezone: string;
+  ready: boolean;
+  truncated: boolean;
+  messages: PublicShareMessage[];
+}
+
+function threadSharePath(agentId: string, threadId: string): string {
+  return `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+    threadId,
+  )}/share`;
+}
+
+/** Read-only transcript. The share token is the credential. */
+export function fetchPublicShare(shareId: string): Promise<PublicShareView> {
+  return request<PublicShareView>(`/shares/${encodeURIComponent(shareId)}`);
+}
+
 export const octopThreadsApi = {
   list: (agentId: string, limit = 50) =>
     request<OctopThread[]>(
@@ -303,6 +344,18 @@ export const octopThreadsApi = {
       )}/read`,
       { method: "POST" },
     ),
+
+  shareStatus: (agentId: string, threadId: string) =>
+    request<ThreadShareLink>(threadSharePath(agentId, threadId)),
+
+  createShare: (agentId: string, threadId: string, rotate = false) =>
+    request<ThreadShareLink>(threadSharePath(agentId, threadId), {
+      method: "POST",
+      body: JSON.stringify({ rotate }),
+    }),
+
+  revokeShare: (agentId: string, threadId: string) =>
+    request<void>(threadSharePath(agentId, threadId), { method: "DELETE" }),
 
   rebind: (agentId: string, threadId: string) =>
     request<{ session_key: string; thread_id: string }>(

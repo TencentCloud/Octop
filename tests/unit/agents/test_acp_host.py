@@ -7,6 +7,24 @@ import pytest
 from octop.infra.agents.settings import acp_host
 
 
+def test_windows_npx_runner_keeps_arguments_out_of_the_shell(tmp_path, monkeypatch):
+    from octop.infra.agents.settings import acp
+
+    shim = tmp_path / "npx.cmd"
+    script = tmp_path / "node_modules" / "npm" / "bin" / "npx-cli.js"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    node = tmp_path / "node.exe"
+    monkeypatch.setattr(acp.sys, "platform", "win32")
+    monkeypatch.setattr(
+        acp.shutil, "which", lambda name, path: str(shim if name == "npx" else node)
+    )
+    assert acp.host_runner_argv("npx", ["adapter with spaces", "x&y"], {}) == (
+        str(node),
+        [str(script), "adapter with spaces", "x&y"],
+    )
+
+
 @pytest.mark.asyncio
 async def test_ready_when_handshake_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(acp_host, "_platform_key", lambda: "linux")
@@ -164,3 +182,20 @@ async def test_windows_opencode_skips_auto_install(monkeypatch: pytest.MonkeyPat
     assert result["status"] == "skipped"
     assert result["can_auto_install"] is False
     assert "WSL" in result["install_script"]
+
+
+@pytest.mark.asyncio
+async def test_qwen_code_launches_with_acp_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(acp_host, "_platform_key", lambda: "darwin")
+    monkeypatch.setattr(acp_host, "_which", lambda name, env: f"/bin/{name}")
+
+    async def ok(command: str, args: list[str], env: dict[str, str]) -> tuple[bool, str]:
+        assert command == "qwen"
+        assert args == ["--acp"]
+        assert env
+        return True, ""
+
+    monkeypatch.setattr(acp_host, "_handshake", ok)
+    result = await acp_host.acp_host_status(runner="qwen_code", locale="en")
+    assert result["status"] == "ready"
+    assert "npm install -g @qwen-code/qwen-code" in result["scripts"]["darwin"]

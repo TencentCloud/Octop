@@ -14,6 +14,7 @@ from octop.infra.connectors.custom_mcp import (
     extract_servers,
     harness_spec_for_server,
     normalize_server_spec,
+    sanitize_stdio_env,
     validate_servers_map,
 )
 from octop.infra.connectors.service import ConnectorService
@@ -22,6 +23,8 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.settings import SettingsRepo
+from octop.infra.db.repos.user_group_members import UserGroupMemberRepo
+from octop.infra.db.repos.user_groups import UserGroupRepo
 from octop.infra.utils.ulid import new_ulid
 
 
@@ -91,6 +94,28 @@ def test_normalize_streamable_http_and_stdio():
     assert stdio["command"] == "npx"
     assert stdio["args"] == ["-y", "pkg"]
     assert stdio["enabled"] is False
+
+
+def test_stdio_env_drops_loader_overrides() -> None:
+    cleaned = sanitize_stdio_env(
+        {
+            "API_TOKEN": "keep",
+            "LD_PRELOAD": "/tmp/x.so",
+            "PYTHONPATH": "/tmp",
+            "NODE_OPTIONS": "--require /tmp/p.js",
+            "DYLD_INSERT_LIBRARIES": "/tmp/x.dylib",
+        }
+    )
+    assert cleaned == {"API_TOKEN": "keep"}
+    spec = normalize_server_spec(
+        "local",
+        {
+            "transport": "stdio",
+            "command": "npx",
+            "env": {"LD_PRELOAD": "/tmp/x.so", "MCP_TOKEN": "t"},
+        },
+    )
+    assert spec["env"] == {"MCP_TOKEN": "t"}
 
 
 def test_shared_custom_server_uses_collision_safe_name_for_viewer(
@@ -647,3 +672,98 @@ async def test_ensure_fresh_custom_servers_keeps_valid_token_when_refresh_fails(
     preview = svc.get_custom_servers_for_api(uid)
     assert preview["srv"]["oauth"]["configured"] is True
     assert svc.get_custom_servers(uid)["srv"]["oauth"]["access_token"] == "still-valid"
+
+
+def test_normalize_visibility_and_avatar_icon() -> None:
+    spec = normalize_server_spec(
+        "srv",
+        {
+            "transport": "stdio",
+            "command": "npx",
+            "visibility": "groups",
+            "group_ids": ["g1", "g1"],
+            "avatar_icon": "Plug",
+        },
+    )
+    assert spec["shared"] is True
+    assert spec["visibility"] == "groups"
+    assert spec["group_ids"] == ["g1"]
+    assert spec["avatar_icon"] == "plug"
+    harness = harness_spec_for_server(spec)
+    assert "visibility" not in harness
+    assert "group_ids" not in harness
+    assert "avatar_icon" not in harness
+
+    private = normalize_server_spec(
+        "srv",
+        {
+            "transport": "stdio",
+            "command": "npx",
+            "visibility": "owner",
+            "shared": True,
+        },
+    )
+    assert "shared" not in private
+    with pytest.raises(ValueError, match="avatar icon"):
+        normalize_server_spec(
+            "srv",
+            {"transport": "stdio", "command": "npx", "avatar_icon": "Not Icon"},
+        )
+
+
+def _ensure_named_user(db: SqlitePool, username: str) -> int:
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, 'x', 'user', 1)",
+            (username,),
+        )
+        row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    assert row is not None
+    return int(row["id"])
+
+
+def test_group_limited_custom_server_is_hidden_outside_the_group(
+    svc: ConnectorService,
+    db: SqlitePool,
+) -> None:
+    owner_id = _ensure_user(db)
+    member_id = _ensure_second_user(db)
+    outsider_id = _ensure_named_user(db, "u3")
+    UserGroupRepo(db).create(name="ops", description=None, user_group_id="opsgrp")
+    UserGroupMemberRepo(db).add("opsgrp", member_id)
+    svc.put_custom_servers(
+        owner_id,
+        {
+            "linear": {
+                "transport": "streamable_http",
+                "url": "https://mcp.linear.app/mcp",
+                "visibility": "groups",
+                "group_ids": ["opsgrp"],
+            },
+            "public": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.com/mcp",
+                "visibility": "all",
+            },
+        },
+    )
+
+    def names(user_id: int) -> set[str]:
+        return {str(row["display_name"]) for row in svc.list_instances_for_api(user_id)}
+
+    assert names(owner_id) == {"linear", "public"}
+    assert names(member_id) == {"linear", "public"}
+    assert names(outsider_id) == {"public"}
+    assert not any(
+        name.endswith("__linear") for name in svc.list_active_mcp_server_names(outsider_id)
+    )
+    assert not any(name.endswith("__linear") for name in svc.custom_harness_configs(outsider_id))
+    owner_linear = next(
+        row for row in svc.list_instances_for_api(owner_id) if row["display_name"] == "linear"
+    )
+    assert owner_linear["visibility"] == "groups"
+    assert owner_linear["group_ids"] == ["opsgrp"]
+
+    with db.transaction() as conn:
+        conn.execute("UPDATE users SET role = 'admin' WHERE id = ?", (outsider_id,))
+    assert "linear" in names(outsider_id)

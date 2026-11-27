@@ -93,4 +93,17 @@ describe("setup lockdown handling", () => {
     );
     expect(replace).not.toHaveBeenCalled();
   });
+  it("bounds a non-setup 503 without cloning or displaying its HTML", async () => {
+    const response = new Response("<html>private diagnostics</html>", {
+      status: 503,
+      headers: { "x-request-id": "trace-503" },
+    });
+    const clone = vi.spyOn(response, "clone");
+    fetchMock.mockResolvedValueOnce(response);
+    await expect(mod.request("/agents")).rejects.toThrow(
+      "HTTP 503 (Request ID: trace-503)",
+    );
+    expect(clone).not.toHaveBeenCalled();
+    expect(mod.isSetupRequiredKnown()).toBe(false);
+  });
 });

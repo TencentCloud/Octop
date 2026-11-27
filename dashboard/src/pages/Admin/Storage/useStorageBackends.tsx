@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Cloud, type LucideIcon } from "lucide-react";
 import { getStorageLogo } from "../../../assets/storage";
 import { request } from "../../../api/request";
 
@@ -16,8 +17,36 @@ function storageBrandIcon(kind: string): ReactNode {
       width={36}
       height={36}
       draggable={false}
-      style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        objectFit:
+          kind === "opensandbox" || kind === "cubesandbox" ? "contain" : "cover",
+      }}
     />
+  );
+}
+
+/** Lucide glyph on a brand tile (ISC; no hand-drawn asset). */
+function storageLucideIcon(Icon: LucideIcon, background: string): ReactNode {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        background,
+        color: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      <Icon size={20} strokeWidth={2} />
+    </span>
   );
 }
 
@@ -67,6 +96,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "postgres",
   "docker",
   "opensandbox",
+  "cubesandbox",
 ]);
 
 export function isAgentResolvableStorageKind(kind: string): boolean {
@@ -368,6 +398,22 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     ],
   },
   {
+    kind: "cubesandbox",
+    nameKey: "storage.kindCubesandbox",
+    descKey: "storage.descCubesandbox",
+    color: "#4338ca",
+    icon: storageBrandIcon("cubesandbox"),
+    fields: [
+      {
+        key: "bucket",
+        labelKey: "storage.cubesandboxTemplateLabel",
+        requiredMessageKey: "storage.cubesandboxTemplateRequired",
+        required: true,
+        placeholder: "tpl-…",
+      },
+    ],
+  },
+  {
     kind: "postgres",
     nameKey: "storage.kindPostgres",
     descKey: "storage.descPostgres",
@@ -445,6 +491,33 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
       },
     ],
   },
+  {
+    kind: "webdav",
+    nameKey: "storage.kindWebdav",
+    descKey: "storage.descWebdav",
+    color: "#1677ff",
+    icon: storageLucideIcon(Cloud, "#1677ff"),
+    fields: [
+      {
+        key: "endpoint",
+        labelKey: "storage.endpointLabel",
+        required: true,
+        placeholder: "https://dav.example/remote.php/dav/files/user/",
+      },
+      {
+        key: "access_key",
+        labelKey: "storage.usernameLabel",
+        placeholder: "username",
+        secret: false,
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.passwordLabel",
+        secret: true,
+        placeholder: "password",
+      },
+    ],
+  },
 ];
 
 export const STORAGE_KINDS = STORAGE_TYPE_DEFS.map((t) => ({
@@ -472,12 +545,17 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
   {
     id: "sandbox",
     titleKey: "storage.groupSandbox",
-    kinds: ["docker", "opensandbox"],
+    kinds: ["docker", "opensandbox", "cubesandbox"],
   },
   {
     id: "database",
     titleKey: "storage.groupDatabase",
     kinds: ["postgres"],
+  },
+  {
+    id: "backup",
+    titleKey: "storage.groupBackup",
+    kinds: ["webdav"],
   },
 ];
 

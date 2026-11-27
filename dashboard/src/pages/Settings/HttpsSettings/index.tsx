@@ -54,6 +54,7 @@ export function HttpsSettingsPanel() {
   const [checking, setChecking] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [serviceMode, setServiceMode] = useState<string | null>(null);
+  const [desktopShell, setDesktopShell] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const domainInitialized = useRef(false);
   const { restartPhase, requestRestart } = useServiceRestartContext();
@@ -80,8 +81,14 @@ export function HttpsSettingsPanel() {
     void fetchStatus();
     updateApi
       .getUpdateStatus()
-      .then((s) => setServiceMode(s.service_mode ?? null))
-      .catch(() => setServiceMode(null));
+      .then((s) => {
+        setServiceMode(s.service_mode ?? null);
+        setDesktopShell(s.updates_managed_by_shell === true);
+      })
+      .catch(() => {
+        setServiceMode(null);
+        setDesktopShell(false);
+      });
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -266,7 +273,15 @@ export function HttpsSettingsPanel() {
             )}
 
             {!eligible && !tlsEnabled && (
-              <Alert type="info" showIcon message={t("tls.notEligible")} />
+              <Alert
+                type="info"
+                showIcon
+                message={
+                  desktopShell
+                    ? t("tls.notEligibleDesktop")
+                    : t("tls.notEligible")
+                }
+              />
             )}
 
             {status?.tls.dual_listeners && (

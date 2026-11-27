@@ -21,6 +21,7 @@ _AGENT_RESOLVABLE_KINDS = frozenset(
         "postgres",
         "docker",
         "opensandbox",
+        "cubesandbox",
     }
 )
 _OPENSANDBOX_PROTOCOLS = frozenset({"http", "https"})
@@ -155,6 +156,12 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         apply_docker_cfg_keys(spec, cfg)
         return spec
 
+    if kind == "cubesandbox":
+        template = str(row.bucket or "").strip()
+        if not template:
+            return None
+        return {"type": "cubesandbox", "template": template}
+
     if kind == "opensandbox":
         image = cfg.get("image") or row.bucket or _DEFAULT_OPENSANDBOX_IMAGE
         spec = {"type": "opensandbox", "image": str(image)}
@@ -182,7 +189,10 @@ def storage_spec_previewable(spec: Any) -> bool:
     """
     if not isinstance(spec, dict):
         return True
-    if str(spec.get("type") or "").lower() == "opensandbox":
+    kind = str(spec.get("type") or "").lower()
+    if kind == "cubesandbox":
+        return False
+    if kind == "opensandbox":
         if "previewable" in spec:
             return bool(spec["previewable"])
         return False

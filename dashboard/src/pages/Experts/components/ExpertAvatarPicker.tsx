@@ -36,6 +36,7 @@ export default function ExpertAvatarPicker({
 
   return (
     <ResourceAvatarPicker
+      compact
       imageUrl={imageUrl}
       presetId={presetId}
       presets={EXPERT_AVATAR_PRESETS}

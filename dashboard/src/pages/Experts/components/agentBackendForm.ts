@@ -18,6 +18,7 @@ export const BACKEND_POLICY_TYPES = [
   "postgres",
   "docker",
   "opensandbox",
+  "cubesandbox",
 ] as const;
 
 /** Storage kind ``shell`` is the same policy type as builtin ``local_shell``. */
@@ -45,6 +46,7 @@ const BACKEND_POLICY_LABEL_KEYS: Record<
   postgres: "storage.kindPostgres",
   docker: "storage.kindDocker",
   opensandbox: "storage.kindOpensandbox",
+  cubesandbox: "storage.kindCubesandbox",
 };
 
 export function backendPolicyTypeLabel(
@@ -78,12 +80,29 @@ export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
 
-/** Create-form default. ``composite`` stands in when ``local_shell`` is blocked. */
+const BACKEND_POLICY_TYPE_SET = new Set<string>(BACKEND_POLICY_TYPES);
+
+/**
+ * Create-form default. A user-level preferred type wins when it is allowed.
+ * ``composite`` stands in when neither that type nor ``local_shell`` is allowed.
+ */
 export function defaultCreateBackendChoice(
   allowed: readonly string[] | null | undefined,
+  preferred?: string | null,
 ): string {
   const restricted = restrictedBackendTypes(allowed);
-  if (!restricted || isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)) {
+  const requested = canonicalBackendPolicyType((preferred ?? "").trim());
+  const choice =
+    requested && BACKEND_POLICY_TYPE_SET.has(requested)
+      ? requested
+      : DEFAULT_BACKEND;
+  if (!restricted || isBackendPolicyTypeAllowed(choice, restricted)) {
+    return choice;
+  }
+  if (
+    choice !== DEFAULT_BACKEND &&
+    isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)
+  ) {
     return DEFAULT_BACKEND;
   }
   return "composite";
@@ -154,6 +173,11 @@ export interface FilesystemDefaults {
    */
   default_workspace_dir?: string;
   /**
+   * Full default workspace for the ``agent_id`` query. The server uses the
+   * same rule as agent creation, including a scoped workspace root.
+   */
+  default_agent_workspace?: string;
+  /**
    * True only when a non-root `root_dir` really gets OS-level confinement
    * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
    * the UI must not promise a sandbox.
@@ -163,8 +187,12 @@ export interface FilesystemDefaults {
   in_container?: boolean;
 }
 
-export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {
-  return request<FilesystemDefaults>("/filesystem/defaults");
+export async function fetchFilesystemDefaults(
+  agentId?: string,
+): Promise<FilesystemDefaults> {
+  const id = agentId?.trim();
+  const query = id ? `?agent_id=${encodeURIComponent(id)}` : "";
+  return request<FilesystemDefaults>(`/filesystem/defaults${query}`);
 }
 
 export function isNamedBackend(ref: string): ref is `named:${string}` {

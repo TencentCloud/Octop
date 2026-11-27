@@ -15,7 +15,17 @@ async def test_list_providers(env):
 
     r = await c.get("/api/providers", headers=auth)
     assert r.status_code == 200
-    assert any(p["name"] == "openai" for p in r.json())
+    listed = r.json()
+    assert any(p["name"] == "openai" for p in listed)
+    openai = next(p for p in listed if p["name"] == "openai")
+    assert openai["api_key"] is None
+    assert openai["api_key_set"] is True
+
+    admin = await c.get("/api/admin/providers", headers=auth)
+    assert admin.status_code == 200
+    admin_row = next(p for p in admin.json() if p["name"] == "openai")
+    assert admin_row["api_key"] is None
+    assert admin_row["api_key_set"] is True
 
 
 async def test_admin_creates_provider(env):
@@ -243,7 +253,8 @@ async def test_duplicate_magpie_create_does_not_overwrite(env):
     assert created.status_code == 201
     saved = created.json()
     assert saved["integration"] == "magpie"
-    assert saved["api_key"] == "magpie-octop"
+    assert saved["api_key"] is None
+    assert saved["api_key_set"] is True
     assert saved["models"][0]["id"] == "vendor/org/model"
 
     again = await c.post("/api/admin/providers", headers=auth, json=body)
@@ -253,5 +264,6 @@ async def test_duplicate_magpie_create_does_not_overwrite(env):
     listed = await c.get("/api/admin/providers", headers=auth)
     rows = [row for row in listed.json() if row["name"] == "Magpie"]
     assert len(rows) == 1
-    assert rows[0]["api_key"] == "magpie-octop"
+    assert rows[0]["api_key"] is None
+    assert rows[0]["api_key_set"] is True
     assert rows[0]["models"][0]["id"] == "vendor/org/model"

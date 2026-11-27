@@ -4,8 +4,20 @@ import type { KnowledgeCitation } from "../../utils/parseKnowledgeCitations";
 interface ChatFilePreviewContextValue {
   /** Open the shared file panel on a workspace path (preview / download cards). */
   openFilePreview: (path: string, agentId?: string | null) => void;
+  /** Open the git panel with this file's diff selected. */
+  openGitChange: (path: string, agentId?: string | null) => void;
+  /** Open this turn's before→after diff in the right-side dock. */
+  openTurnDiff: (
+    agentId: string,
+    threadId: string,
+    messageId: string,
+    path: string,
+    displayPath?: string,
+  ) => void;
   /** Open a knowledge citation in the shared chat dock (same shell as file tabs). */
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
+  /** Active thread id, for per-turn file checkpoint APIs. */
+  threadId?: string | null;
 }
 
 const ChatFilePreviewContext =
@@ -13,16 +25,34 @@ const ChatFilePreviewContext =
 
 export function ChatFilePreviewProvider({
   openFilePreview,
+  openGitChange,
+  openTurnDiff,
   openKnowledgeCitation,
+  threadId = null,
   children,
 }: {
   openFilePreview: (path: string, agentId?: string | null) => void;
+  openGitChange: (path: string, agentId?: string | null) => void;
+  openTurnDiff: (
+    agentId: string,
+    threadId: string,
+    messageId: string,
+    path: string,
+    displayPath?: string,
+  ) => void;
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
+  threadId?: string | null;
   children: ReactNode;
 }) {
   return (
     <ChatFilePreviewContext.Provider
-      value={{ openFilePreview, openKnowledgeCitation }}
+      value={{
+        openFilePreview,
+        openGitChange,
+        openTurnDiff,
+        openKnowledgeCitation,
+        threadId,
+      }}
     >
       {children}
     </ChatFilePreviewContext.Provider>

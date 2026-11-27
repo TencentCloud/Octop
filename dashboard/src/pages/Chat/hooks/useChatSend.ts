@@ -10,6 +10,7 @@ import {
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
+import { localDirectoryMissing, pinLocalExecution } from "../localExecution";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -164,6 +165,10 @@ export function useChatSend({
 
       const targetThreadId =
         overrides?.threadId !== undefined ? overrides.threadId : activeThreadId;
+      if (!targetThreadId && localDirectoryMissing(agent, null)) {
+        message.warning(t("chat.remoteExpert.localDirectoryRequired"));
+        return false;
+      }
 
       if (targetThreadId) {
         if (isPendingThread(targetThreadId)) {
@@ -194,6 +199,7 @@ export function useChatSend({
           return;
         }
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
+        pinLocalExecution(agent, tid);
         // Title is filled by the server from an AI summary of this first
         // message. Do not lock the raw question in as the thread name.
         if (policy) syncSessionHitlPolicy(tid, policy);

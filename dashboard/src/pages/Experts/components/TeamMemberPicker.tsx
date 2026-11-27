@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Input } from "antd";
+import { Input, Tooltip } from "antd";
 import { Check } from "lucide-react";
 import cx from "classnames";
 import { isOwnedExpert } from "../../../utils/sharedExpert";
@@ -11,6 +11,7 @@ import {
   incomingShareProps,
   SharedAvatarMark,
 } from "../../../components/SharedResourceBadge";
+import { useTextOverflow } from "./expertDrawer/useTextOverflow";
 import styles from "../index.module.less";
 
 export interface TeamMemberOption {
@@ -57,6 +58,63 @@ export function selectedRosterIds(
     out.push(id);
   }
   return out;
+}
+
+function TeamMemberCard({
+  expert,
+  active,
+  onToggle,
+}: {
+  expert: TeamMemberOption;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const description = expert.description?.trim();
+  const accent = expert.color || "#0d9488";
+  const { ref, tooltip } = useTextOverflow<HTMLDivElement>(
+    description,
+    styles.memberPickDesc,
+  );
+
+  return (
+    <Tooltip title={tooltip} trigger={["hover", "focus"]}>
+      <button
+        type="button"
+        className={cx(
+          styles.memberPickCard,
+          active && styles.memberPickCardSelected,
+        )}
+        onClick={onToggle}
+        aria-pressed={active}
+      >
+        {active && (
+          <span className={styles.memberPickCheck} aria-hidden>
+            <Check size={11} strokeWidth={3} />
+          </span>
+        )}
+        <SharedAvatarMark {...incomingShareProps(expert)}>
+          <ManagedAvatarMark runner={managedRunnerId(expert)}>
+            <div
+              className={styles.memberPickIcon}
+              style={{ color: accent, background: `${accent}1a` }}
+            >
+              <ExpertIcon
+                iconUrl={expert.icon_url}
+                iconName={expert.icon_name}
+                size={expert.icon_url ? 36 : 18}
+              />
+            </div>
+          </ManagedAvatarMark>
+        </SharedAvatarMark>
+        <div className={styles.memberPickBody}>
+          <div className={styles.memberPickName}>{expert.name}</div>
+          <div ref={ref} className={styles.memberPickDesc}>
+            {description || "\u00a0"}
+          </div>
+        </div>
+      </button>
+    </Tooltip>
+  );
 }
 
 export default function TeamMemberPicker({
@@ -130,48 +188,14 @@ export default function TeamMemberPicker({
         </div>
       ) : (
         <div className={styles.memberPickerGrid}>
-          {filtered.map((expert) => {
-            const active = selectedSet.has(expert.agent_id);
-            const accent = expert.color || "#0d9488";
-            return (
-              <button
-                key={expert.agent_id}
-                type="button"
-                className={cx(
-                  styles.memberPickCard,
-                  active && styles.memberPickCardSelected,
-                )}
-                onClick={() => toggle(expert.agent_id)}
-                aria-pressed={active}
-              >
-                {active && (
-                  <span className={styles.memberPickCheck} aria-hidden>
-                    <Check size={11} strokeWidth={3} />
-                  </span>
-                )}
-                <SharedAvatarMark {...incomingShareProps(expert)}>
-                  <ManagedAvatarMark runner={managedRunnerId(expert)}>
-                    <div
-                      className={styles.memberPickIcon}
-                      style={{ color: accent, background: `${accent}1a` }}
-                    >
-                      <ExpertIcon
-                        iconUrl={expert.icon_url}
-                        iconName={expert.icon_name}
-                        size={expert.icon_url ? 36 : 18}
-                      />
-                    </div>
-                  </ManagedAvatarMark>
-                </SharedAvatarMark>
-                <div className={styles.memberPickBody}>
-                  <div className={styles.memberPickName}>{expert.name}</div>
-                  <div className={styles.memberPickDesc}>
-                    {expert.description?.trim() || "\u00a0"}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {filtered.map((expert) => (
+            <TeamMemberCard
+              key={expert.agent_id}
+              expert={expert}
+              active={selectedSet.has(expert.agent_id)}
+              onToggle={() => toggle(expert.agent_id)}
+            />
+          ))}
         </div>
       )}
     </div>

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from octop.infra.agents.settings.acp import host_runner_argv
+
 logger = logging.getLogger(__name__)
 
 _INSTALL_TIMEOUT_SEC = 180
@@ -188,6 +190,28 @@ _CATALOG: dict[str, _RunnerSpec] = {
                 "irm https://pi.dev/install.ps1 | iex\n"
                 "# ACP starts with: npx -y pi-acp\n"
                 "# Install Node.js if npx is not on PATH."
+            ),
+        },
+    ),
+    "qwen_code": _RunnerSpec(
+        command="qwen",
+        args=("--acp",),
+        requires=(),
+        docs_url="https://github.com/QwenLM/qwen-code",
+        label_zh="Qwen Code",
+        label_en="Qwen Code",
+        scripts={
+            "linux": _posix(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
+            ),
+            "darwin": _posix(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
+            ),
+            "win32": _win(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
             ),
         },
     ),
@@ -414,6 +438,7 @@ async def _handshake(command: str, args: list[str], env: dict[str, str]) -> tupl
         if Path(command).name.lower().startswith("npx")
         else _PROBE_TIMEOUT_SEC
     )
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(timeout):
             async with spawn_agent_process(
@@ -450,6 +475,7 @@ async def _ask(command: str, args: list[str], env: dict[str, str]) -> tuple[bool
     from acp.schema import ClientCapabilities, Implementation, TextContentBlock
 
     client = _ProbeClient()
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(_ASK_TIMEOUT_SEC):
             async with spawn_agent_process(
