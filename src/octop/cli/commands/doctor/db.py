@@ -1,4 +1,4 @@
-"""Offline SQLite health inspection and recovery commands (``octop db``)."""
+"""SQLite health check for ``octop doctor db``."""
 
 from __future__ import annotations
 
@@ -18,11 +18,6 @@ from octop.infra.db.sqlite_doctor import (
 from octop.infra.utils.paths import PathLayout
 
 
-@click.group()
-def db() -> None:
-    """Inspect and recover local SQLite databases under OCTOP_HOME."""
-
-
 def _format_mb(nbytes: int) -> str:
     return f"{nbytes / (1024 * 1024):.2f} MB"
 
@@ -35,7 +30,7 @@ def _print_report(report: SqliteCheckReport) -> None:
         click.echo(f"        {report.error}")
 
 
-@db.command(name="doctor")
+@click.command(name="db")
 @click.option(
     "--full",
     is_flag=True,
@@ -49,7 +44,36 @@ def _print_report(report: SqliteCheckReport) -> None:
     default=None,
     help="Check a single SQLite file instead of scanning OCTOP_HOME.",
 )
-def doctor(full: bool, target_path: Path | None) -> None:
+@click.option(
+    "--fix",
+    is_flag=True,
+    default=False,
+    help="Repair corrupted SQLite files after checking them.",
+)
+@click.option(
+    "--reset",
+    is_flag=True,
+    default=False,
+    help="Archive damaged databases and remove them so Octop recreates clean files.",
+)
+@click.option(
+    "-y",
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Skip the interactive confirmation prompt when fixing databases.",
+)
+def database(full: bool, target_path: Path | None, fix: bool, reset: bool, yes: bool) -> None:
+    """Inspect local SQLite databases under OCTOP_HOME."""
+    if not fix:
+        if reset or yes:
+            raise click.UsageError("--reset and --yes require --fix.")
+        _check_databases(full, target_path)
+        return
+    _fix_databases(target_path, reset, yes)
+
+
+def _check_databases(full: bool, target_path: Path | None) -> None:
     """Check SQLite databases under OCTOP_HOME for corruption."""
     paths = (
         [target_path]
@@ -80,8 +104,8 @@ def doctor(full: bool, target_path: Path | None) -> None:
         if corrupt:
             click.echo(
                 f"\nFound {len(corrupt)} corrupted database(s). "
-                "Stop Octop first, then run `octop db recover --all-corrupt` "
-                "(or `octop db recover <path>`)."
+                "Stop Octop first, then run `octop doctor db --fix` "
+                "(or `octop doctor db --fix --path <path>`)."
             )
         else:
             click.echo(f"\nAll {len(reports)} SQLite database(s) passed integrity check.")
@@ -90,44 +114,17 @@ def doctor(full: bool, target_path: Path | None) -> None:
         raise click.exceptions.Exit(1)
 
 
-@db.command(name="recover")
-@click.argument("target", type=click.Path(path_type=Path), required=False, default=None)
-@click.option(
-    "--all-corrupt",
-    is_flag=True,
-    default=False,
-    help="Recover every SQLite file under OCTOP_HOME that fails PRAGMA quick_check.",
-)
-@click.option(
-    "--reset",
-    is_flag=True,
-    default=False,
-    help="Archive the damaged database and remove it so Octop recreates a clean file.",
-)
-@click.option(
-    "-y",
-    "--yes",
-    is_flag=True,
-    default=False,
-    help="Skip the interactive confirmation prompt.",
-)
-def recover(target: Path | None, all_corrupt: bool, reset: bool, yes: bool) -> None:
-    """Back up and recover a corrupted SQLite file (stop Octop before running)."""
-    if target is None and not all_corrupt:
-        raise click.UsageError("Specify a database TARGET path or pass --all-corrupt.")
-    if target is not None and all_corrupt:
-        raise click.UsageError("Pass either TARGET or --all-corrupt, not both.")
-
-    if all_corrupt:
+def _fix_databases(target_path: Path | None, reset: bool, yes: bool) -> None:
+    """Back up and repair corrupted SQLite files under OCTOP_HOME."""
+    if target_path is None:
         reports = [
             inspect_sqlite_file(p) for p in discover_sqlite_files(PathLayout.from_env().root)
         ]
         targets = [Path(r.path) for r in reports if not r.ok]
     else:
-        assert target is not None
-        if not target.is_file():
-            raise click.ClickException(f"SQLite file not found: {target}")
-        targets = [target]
+        if not target_path.is_file():
+            raise click.ClickException(f"SQLite file not found: {target_path}")
+        targets = [target_path]
 
     if not targets:
         if json_output_enabled():
@@ -138,7 +135,7 @@ def recover(target: Path | None, all_corrupt: bool, reset: bool, yes: bool) -> N
 
     mode: Literal["recover", "reset"] = "reset" if reset else "recover"
     if not yes:
-        action = "archive and reset" if reset else "back up and recover"
+        action = "archive and reset" if reset else "back up and fix"
         prompt = (
             f"Make sure the Octop server is stopped before modifying SQLite files.\n"
             f"Proceed to {action} {len(targets)} database file(s)?"

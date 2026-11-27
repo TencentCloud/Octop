@@ -127,7 +127,7 @@ def test_recover_sqlite_file_reset_archives_and_removes_target(tmp_path: Path) -
     assert Path(result.backup_path).read_bytes() == b"broken"
 
 
-def test_cli_db_doctor_and_recover(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_doctor_db_and_fix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     healthy = tmp_path / "octop.db"
     corrupt = tmp_path / "agents" / "ag1" / ".octop" / "memory.sqlite"
@@ -136,20 +136,20 @@ def test_cli_db_doctor_and_recover(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     corrupt.write_bytes(b"totally corrupted database")
 
     runner = CliRunner()
-    res = runner.invoke(cli, ["--json", "db", "doctor"])
+    res = runner.invoke(cli, ["--json", "doctor", "db"])
     assert res.exit_code == 1, res.output
     payload = json.loads(res.output)
     assert payload["ok"] is False
     assert payload["checked"] == 2
     assert payload["corrupt"] == 1
 
-    reset_res = runner.invoke(cli, ["--json", "db", "recover", "--all-corrupt", "--reset", "--yes"])
+    reset_res = runner.invoke(cli, ["--json", "doctor", "db", "--fix", "--reset", "--yes"])
     assert reset_res.exit_code == 0, reset_res.output
     rec_payload = json.loads(reset_res.output)
     assert len(rec_payload["recovered"]) == 1
     assert rec_payload["recovered"][0]["method"] == "reset"
     assert not corrupt.exists()
 
-    after = runner.invoke(cli, ["--json", "db", "doctor"])
+    after = runner.invoke(cli, ["--json", "doctor", "db"])
     assert after.exit_code == 0, after.output
     assert json.loads(after.output)["ok"] is True
