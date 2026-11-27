@@ -2,6 +2,7 @@ import type { ChatMessage } from "../pages/Chat/hooks/useChat";
 import type { AssistantTurnSplit } from "../pages/Chat/utils/messageContent";
 import {
   collectToolMediaFromToolData,
+  toolDeliversMedia,
   type ToolMediaItem,
 } from "./toolMediaBlocks";
 
@@ -21,8 +22,12 @@ export function collectTurnToolMedia(
 
   for (const msg of split?.tools ?? []) {
     const owner = msg.speakerAgentId?.trim() || agentId;
+    const delivers = toolDeliversMedia(msg.toolData);
+    if (!delivers && (!msg.attachments || msg.attachments.length === 0)) {
+      continue;
+    }
     const batch = collectToolMediaFromToolData(
-      msg.toolData,
+      delivers ? msg.toolData : undefined,
       owner,
       msg.attachments,
     );

@@ -585,12 +585,19 @@ async def _enrich_block_with_backend(
     return _block_with_preview_url(block, url)
 
 
-def enrich_tool_output_string_sync(output: str, *, agent_id: str) -> str:
+def enrich_tool_output_string_sync(
+    output: str,
+    *,
+    agent_id: str,
+    tool_name: str | None = None,
+) -> str:
     """Cheap URL rewrite for history loads — no workspace file import."""
     if not output.strip():
         return output
     stripped = output.strip()
     if stripped[0] not in "{[":
+        if tool_name is not None and not is_media_push_tool(tool_name):
+            return output
         return _enrich_plain_text_tool_media_sync(output, agent_id=agent_id)
     enriched = enrich_tool_message_content(output, agent_id=agent_id)
     return enriched if isinstance(enriched, str) else output
