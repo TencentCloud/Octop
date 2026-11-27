@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
+from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 
@@ -144,6 +145,18 @@ class ClsTestBody(BaseModel):
     secret_key: str | None = None
 
 
+class ClsProbeResponse(BaseModel):
+    ok: bool
+    api_ok: bool | None = Field(
+        default=None, description="Whether the management API probe succeeded."
+    )
+    otlp_ok: bool | None = Field(
+        default=None, description="Whether the Trace Topic accepted an OTLP probe."
+    )
+    endpoint: str | None = None
+    error: str | None = None
+
+
 def _to_response(cfg: Any) -> LangfuseConfigResponse:
     return LangfuseConfigResponse(
         enabled=cfg.enabled,
@@ -272,6 +285,32 @@ async def put_cls_config(
         active_backend=registry.active_observability_backend(),
         application_created=bool(provisioned and provisioned.created),
     )
+
+
+@router.get(
+    "/cls/effective", summary="Show CLS settings including the deployment environment fallback"
+)
+async def get_effective_cls_config(
+    _: Any = Depends(require_permission("observability")),
+    server: Any = Depends(get_server),
+) -> ClsConfigResponse:
+    backend, cfg = server.app_runtime.agent_registry.effective_cls_settings()
+    return _to_cls_response(cfg, active_backend=backend)
+
+
+@router.post(
+    "/cls/effective/test",
+    summary="Probe the configured CLS trace endpoint",
+    response_model_exclude_unset=True,
+)
+async def test_effective_cls_config(
+    request: Request,
+    _: Any = Depends(require_permission("observability")),
+    server: Any = Depends(get_server),
+) -> ClsProbeResponse:
+    registry = server.app_runtime.agent_registry
+    result = await registry.test_effective_cls_connection(resolve_request_locale(request))
+    return ClsProbeResponse.model_validate(result)
 
 
 @router.post(
