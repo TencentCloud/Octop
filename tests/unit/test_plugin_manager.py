@@ -502,3 +502,32 @@ def test_channel_reload_preserves_class_until_source_changes(tmp_path: Path) -> 
     source.write_text(source.read_text() + "\n# updated implementation\n")
     third = manager.load_installed(install_deps=False)[0].channels[0].channel_cls
     assert third is not first
+
+
+def test_load_installed_purges_submodule_cache_on_reload(tmp_path: Path) -> None:
+    config = tmp_path / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    directory = tmp_path / "plugins" / "sub-tool"
+    pkg_dir = directory / "subpkg"
+    pkg_dir.mkdir(parents=True)
+    (directory / "plugin.yaml").write_text(
+        "id: sub-tool\nversion: 1\nkind: tool\nentry: main.py\n",
+        encoding="utf-8",
+    )
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+    helper = pkg_dir / "helper.py"
+    helper.write_text("GREETING = 'old'\n", encoding="utf-8")
+    (directory / "main.py").write_text(
+        "from .subpkg.helper import GREETING\n"
+        "def setup(ctx):\n"
+        "    ctx.tool('greet', lambda: GREETING)\n",
+        encoding="utf-8",
+    )
+
+    manager = PluginManager(plugins_dir=directory.parent, config_path=config)
+    first = manager.load_installed(install_deps=False)
+    assert first[0].tools[0].fn() == "old"
+
+    helper.write_text("GREETING = 'new_value'\n", encoding="utf-8")
+    second = manager.load_installed(install_deps=False)
+    assert second[0].tools[0].fn() == "new_value"
