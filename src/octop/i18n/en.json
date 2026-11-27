@@ -891,7 +891,8 @@
     "extracted_header": "[Attachment text: {filename}]",
     "empty_message": "[empty message]",
     "empty_image": "User sent an image.",
-    "image_unavailable": "[Attachment] Image could not be loaded for the model."
+    "image_unavailable": "[Attachment] Image could not be loaded for the model.",
+    "image_rejected": "[Image could not be processed and was omitted]"
   },
   "knowledge": {
     "invalid_advanced_settings": "Check the allowed ranges for chunking and retrieval settings. Chunk overlap must be smaller than chunk size.",

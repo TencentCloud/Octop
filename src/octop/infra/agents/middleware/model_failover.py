@@ -8,16 +8,30 @@ from typing import Any, Literal, cast
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.agents.middleware.model_retry import ModelRetryMiddleware
+from langchain_core.exceptions import ModelError
 from langchain_core.messages import AIMessage
 from langgraph.errors import GraphBubbleUp
 from octop_harness.context_usage import breakdown_from_model_request
 from octop_harness.middleware.runtime import runtime_config
 from octop_harness.middleware.turn_model import latest_human_needs_multimodal
 
-from octop.i18n.domains.stream import model_retry_failure_prompt
+from octop.i18n.domains.stream import (
+    AUTH,
+    CONTEXT_LENGTH,
+    DATABASE_CORRUPT,
+    INSUFFICIENT_BALANCE,
+    INVALID_REQUEST,
+    MODEL_NOT_AUTHORIZED,
+    PATH_OUTSIDE_ROOT,
+    classify_stream_error_message,
+    exception_display_message,
+    model_retry_failure_prompt,
+)
+from octop.infra.agents.middleware.workspace_image import is_image_invalid_error
 from octop.infra.agents.providers.health import (
     FailureScope,
     ModelHealthRegistry,
+    _exception_chain,
     classify_model_failure,
 )
 from octop.infra.agents.providers.store import AutoRouteCandidate
@@ -27,6 +41,33 @@ logger = logging.getLogger(__name__)
 
 AUTO_ROUTE_CONFIG_KEY = "octop_auto_route"
 _CONTEXT_SAFETY_RATIO = 0.9
+_NON_RETRYABLE_STATUS_CODES = frozenset({400, 401, 402, 403, 404, 422})
+_NON_RETRYABLE_STREAM_ERRORS = frozenset(
+    {
+        AUTH,
+        CONTEXT_LENGTH,
+        DATABASE_CORRUPT,
+        INSUFFICIENT_BALANCE,
+        INVALID_REQUEST,
+        MODEL_NOT_AUTHORIZED,
+        PATH_OUTSIDE_ROOT,
+    }
+)
+
+
+def _should_retry_model_error(exc: BaseException) -> bool:
+    """Skip pointless retries on deterministic 4xx client/input/auth failures."""
+    if not isinstance(exc, Exception) or isinstance(exc, GraphBubbleUp):
+        return False
+    for item in _exception_chain(exc):
+        if getattr(item, "status_code", None) in _NON_RETRYABLE_STATUS_CODES:
+            return False
+        if isinstance(item, ModelError):
+            return bool(item.is_retryable)
+    if is_image_invalid_error(exc):
+        return False
+    classified = classify_stream_error_message(exception_display_message(exc))
+    return classified not in _NON_RETRYABLE_STREAM_ERRORS
 
 
 def _configurable(request: ModelRequest[Any]) -> dict[str, Any]:
@@ -73,6 +114,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         self._on_failure = on_failure
         self._retry = ModelRetryMiddleware(
             max_retries=max_retries,
+            retry_on=_should_retry_model_error,
             initial_delay=initial_delay,
             max_delay=max_delay,
             on_failure="error",

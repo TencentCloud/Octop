@@ -9,6 +9,7 @@ __all__ = [
     "attachment_empty_image",
     "attachment_empty_message",
     "attachment_extracted_body",
+    "attachment_image_rejected",
     "attachment_image_unavailable",
     "attachment_path_hint",
 ]
@@ -54,3 +55,7 @@ def attachment_empty_image(locale: str | Locale = "en") -> str:
 
 def attachment_image_unavailable(locale: str | Locale = "en") -> str:
     return tr("attachment.image_unavailable", locale)
+
+
+def attachment_image_rejected(locale: str | Locale = "en") -> str:
+    return tr("attachment.image_rejected", locale)

@@ -891,7 +891,8 @@
     "extracted_header": "[附件正文：{filename}]",
     "empty_message": "[空消息]",
     "empty_image": "用户发送了图片。",
-    "image_unavailable": "[附件] 图片无法加载到模型。"
+    "image_unavailable": "[附件] 图片无法加载到模型。",
+    "image_rejected": "[图片无法识别，已忽略]"
   },
   "knowledge": {
     "invalid_advanced_settings": "请检查分块与检索参数的取值范围。分块重叠必须小于分块大小。",
