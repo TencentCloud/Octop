@@ -23,6 +23,7 @@ import {
 import FileViewer from "../../Workspace/components/FileViewer";
 import { getDocKind } from "../../Workspace/utils/docKind";
 import { getMediaKind } from "../../Workspace/utils/mediaKind";
+import { getModelKind } from "../../Workspace/utils/modelKind";
 import { packageSkillRelativePath, SkillFileTree } from "./SkillFileTree";
 import styles from "./SkillDrawer.module.less";
 
@@ -440,7 +441,11 @@ export function SkillDrawer({
       return;
     }
     if (!agentId && !packageId) return;
-    if (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)) {
+    if (
+      getMediaKind(selectedFilePath) ||
+      getDocKind(selectedFilePath) ||
+      getModelKind(selectedFilePath)
+    ) {
       setSiblingContent("");
       setSiblingLoading(false);
       return;
@@ -880,7 +885,9 @@ export function SkillDrawer({
     selectedFilePath?.split("/").filter(Boolean).pop() ?? "";
   const siblingUsesRichPreview = Boolean(
     selectedFilePath &&
-      (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)),
+      (getMediaKind(selectedFilePath) ||
+        getDocKind(selectedFilePath) ||
+        getModelKind(selectedFilePath)),
   );
   const packageSiblingFetchUrl =
     packageId && editingSkill && selectedFilePath

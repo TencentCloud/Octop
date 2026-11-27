@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Archive,
   BookOpen,
+  Box,
   Braces,
   Code2,
   Database,
@@ -159,6 +160,13 @@ const EXT_MAP: Record<string, IconSpec> = {
   mp3: { Icon: FileAudio, color: "#0d9488" },
   wav: { Icon: FileAudio, color: "#0d9488" },
   m4a: { Icon: FileAudio, color: "#0d9488" },
+
+  // 3D models
+  glb: { Icon: Box, color: "#0ea5e9" },
+  gltf: { Icon: Box, color: "#0ea5e9" },
+  stl: { Icon: Box, color: "#0ea5e9" },
+  obj: { Icon: Box, color: "#0ea5e9" },
+  fbx: { Icon: Box, color: "#0ea5e9" },
 
   // Archives
   zip: { Icon: FileArchive, color: "#78716c" },

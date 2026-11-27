@@ -21,8 +21,10 @@ import FilePreview, { getPreviewKind } from "./FilePreview";
 import MediaPreview from "./MediaPreview";
 import CodeEditor from "./CodeEditor";
 import DocumentPreview from "./DocumentPreview";
+import Model3DPreview from "./Model3DPreview";
 import DocumentPreviewLoading from "../../../../components/DocumentPreviewLoading";
 import { getMediaKind } from "../utils/mediaKind";
+import { getModelKind } from "../utils/modelKind";
 import {
   getDocKind,
   getEditableDocLanguage,
@@ -67,6 +69,7 @@ export default function FileViewer({
 
   const mediaKind = getMediaKind(path);
   const docKind = getDocKind(path);
+  const modelKind = getModelKind(path);
   const previewKind = getPreviewKind(path);
   const editableDoc = isEditableDoc(path);
   const showEditButton = isProbablyText(path) || editableDoc;
@@ -79,6 +82,19 @@ export default function FileViewer({
         path={path}
         kind={mediaKind}
         refreshToken={refreshToken}
+        fromWorkspace={fromWorkspace}
+        fetchUrl={fetchUrl}
+      />
+    );
+  }
+
+  if (modelKind) {
+    return (
+      <Model3DPreview
+        key={`${path}:${refreshToken}`}
+        agentId={agentId}
+        path={path}
+        kind={modelKind}
         fromWorkspace={fromWorkspace}
         fetchUrl={fetchUrl}
       />

@@ -27,6 +27,7 @@ import FileViewer from "../../Agent/Workspace/components/FileViewer";
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
+import { getModelKind } from "../../Agent/Workspace/utils/modelKind";
 import {
   getPreviewKind,
   previewNeedsFillLayout,
@@ -70,6 +71,7 @@ export default function FilePanelContent({
 
   const docKind = resolvedPath ? getDocKind(resolvedPath) : null;
   const mediaKind = resolvedPath ? getMediaKind(resolvedPath) : null;
+  const modelKind = resolvedPath ? getModelKind(resolvedPath) : null;
   const previewKind = resolvedPath ? getPreviewKind(resolvedPath) : null;
   const isText = resolvedPath ? isProbablyText(resolvedPath) : false;
   const showEditButton = isText && !fileMissing;
@@ -129,7 +131,7 @@ export default function FilePanelContent({
           }
         })
         .catch(finishError);
-    } else if (mediaKind || docKind) {
+    } else if (mediaKind || docKind || modelKind) {
       finishOk();
     } else {
       probeAuthResource(
@@ -152,6 +154,7 @@ export default function FilePanelContent({
     isText,
     mediaKind,
     docKind,
+    modelKind,
     refreshToken,
   ]);
 
@@ -213,6 +216,7 @@ export default function FilePanelContent({
     !fileMissing &&
     (editMode ||
       docKind !== null ||
+      modelKind !== null ||
       (previewMode && previewNeedsFillLayout(previewKind)));
 
   useLayoutEffect(() => {
