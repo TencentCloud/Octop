@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   AppWindow,
   BookOpen,
+  Box,
   Brain,
   CalendarClock,
   CircleHelp,
@@ -65,6 +66,7 @@ export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   searchfree_search: Globe,
   generate_image: Image,
   generate_video: Video,
+  generate_3d: Box,
   memory_search: Brain,
   memory_get: BookOpen,
   acp_runner: Plug,

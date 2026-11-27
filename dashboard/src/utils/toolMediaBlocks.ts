@@ -513,30 +513,38 @@ function mediaBlocksFromParsed(parsed: unknown): Record<string, unknown>[] {
   if (parsed && typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
     const resultType = String(obj.type || "");
-    const field =
+    const groups: Array<[string, string]> =
       resultType === "image_gen_tool_result"
-        ? "images"
+        ? [["image", "images"]]
         : resultType === "video_gen_tool_result"
-        ? "videos"
-        : null;
-    if (field) {
-      const kind = field === "images" ? "image" : "video";
-      const rows = Array.isArray(obj[field]) ? obj[field] : [];
-      return rows.flatMap((row) => {
-        if (!row || typeof row !== "object") return [];
-        const media = row as Record<string, unknown>;
-        const path = typeof media.path === "string" ? media.path : "";
-        if (!path) return [];
-        return [
-          {
-            type: kind,
-            path,
-            filename: path.split("/").filter(Boolean).pop(),
-            media_type:
-              typeof media.mediaType === "string" ? media.mediaType : undefined,
-            source: { type: "url", url: path },
-          },
-        ];
+        ? [["video", "videos"]]
+        : resultType === "3d_gen_tool_result"
+        ? [
+            ["image", "previews"],
+            ["file", "models"],
+          ]
+        : [];
+    if (groups.length > 0) {
+      return groups.flatMap(([kind, field]) => {
+        const rows = Array.isArray(obj[field]) ? obj[field] : [];
+        return rows.flatMap((row) => {
+          if (!row || typeof row !== "object") return [];
+          const media = row as Record<string, unknown>;
+          const path = typeof media.path === "string" ? media.path : "";
+          if (!path) return [];
+          return [
+            {
+              type: kind,
+              path,
+              filename: path.split("/").filter(Boolean).pop(),
+              media_type:
+                typeof media.mediaType === "string"
+                  ? media.mediaType
+                  : undefined,
+              source: { type: "url", url: path },
+            },
+          ];
+        });
       });
     }
     if (typeof obj.type === "string") {

@@ -738,6 +738,7 @@
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
+    "generate_3d": "Generate 3D model",
     "bilibili_search_anime": "Search Bilibili anime",
     "search_arxiv": "Search arXiv papers"
   },

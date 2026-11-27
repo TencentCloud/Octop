@@ -30,7 +30,7 @@ _WEB_SEARCH_TOOLS: frozenset[str] = frozenset(
         "searchfree_search",
     }
 )
-_MEDIA_TOOLS: frozenset[str] = frozenset({"generate_image", "generate_video"})
+_MEDIA_TOOLS: frozenset[str] = frozenset({"generate_image", "generate_video", "generate_3d"})
 _MEMORY_TOOLS: frozenset[str] = frozenset({"memory_search", "memory_get", "memory_save"})
 _MOBILE_TOOLS: frozenset[str] = frozenset(
     {
@@ -103,6 +103,7 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("searchfree_search", "web"),
     BuiltinToolEntry("generate_image", "media"),
     BuiltinToolEntry("generate_video", "media"),
+    BuiltinToolEntry("generate_3d", "media"),
     BuiltinToolEntry("memory_search", "memory"),
     BuiltinToolEntry("memory_get", "memory"),
     BuiltinToolEntry("memory_save", "memory"),

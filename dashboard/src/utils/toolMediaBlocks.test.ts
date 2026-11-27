@@ -131,6 +131,37 @@ describe("parseStructuredToolOutput", () => {
     expect(parsed.images[0].url).toContain("generated%2Fimages%2Fa.png");
   });
 
+  it("renders 3D generation envelopes as preview images and downloadable model files", () => {
+    const parsed = parseStructuredToolOutput(
+      JSON.stringify({
+        type: "3d_gen_tool_result",
+        previews: [
+          {
+            path: "generated/3d/preview.png",
+            mediaType: "image/png",
+          },
+        ],
+        models: [
+          {
+            path: "generated/3d/mesh.glb",
+            mediaType: "model/gltf-binary",
+          },
+        ],
+      }),
+      "agent-1",
+    );
+
+    expect(parsed.images).toHaveLength(1);
+    expect(parsed.images[0].url).toContain("/api/agents/agent-1/media/preview");
+    expect(parsed.images[0].url).toContain("generated%2F3d%2Fpreview.png");
+    expect(parsed.files).toHaveLength(1);
+    expect(parsed.files[0].url).toContain(
+      "/api/agents/agent-1/workspace/download",
+    );
+    expect(parsed.files[0].url).toContain("generated%2F3d%2Fmesh.glb");
+    expect(parsed.files[0].filename).toBe("mesh.glb");
+  });
+
   it("keeps actionable feedback when a generation envelope has no media", () => {
     const output = JSON.stringify({
       schema_version: 1,

@@ -55,6 +55,7 @@ MEDIA_PUSH_TOOL_BASES = frozenset(
         "mobile_screenshot",
         "generate_image",
         "generate_video",
+        "generate_3d",
     }
 )
 # browser_use / write_file / read_file may embed media-shaped payloads or
@@ -199,35 +200,39 @@ def _generated_media_blocks(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, dict):
         return []
     result_type = value.get("type")
+    groups: list[tuple[str, str]]
     if result_type == "image_gen_tool_result":
-        kind, field = "image", "images"
+        groups = [("image", "images")]
     elif result_type == "video_gen_tool_result":
-        kind, field = "video", "videos"
+        groups = [("video", "videos")]
+    elif result_type == "3d_gen_tool_result":
+        groups = [("image", "previews"), ("file", "models")]
     else:
-        return []
-    rows = value.get(field)
-    if not isinstance(rows, list):
         return []
 
     blocks: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for kind, field in groups:
+        rows = value.get(field)
+        if not isinstance(rows, list):
             continue
-        path = row.get("path")
-        if not isinstance(path, str) or not path.strip():
-            continue
-        mime = row.get("mediaType")
-        source: dict[str, Any] = {"type": "url", "url": path}
-        block: dict[str, Any] = {
-            "type": kind,
-            "path": path,
-            "filename": Path(path).name,
-            "source": source,
-        }
-        if isinstance(mime, str) and mime:
-            block["media_type"] = mime
-            source["media_type"] = mime
-        blocks.append(block)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            path = row.get("path")
+            if not isinstance(path, str) or not path.strip():
+                continue
+            mime = row.get("mediaType")
+            source: dict[str, Any] = {"type": "url", "url": path}
+            block: dict[str, Any] = {
+                "type": kind,
+                "path": path,
+                "filename": Path(path).name,
+                "source": source,
+            }
+            if isinstance(mime, str) and mime:
+                block["media_type"] = mime
+                source["media_type"] = mime
+            blocks.append(block)
     return blocks
 
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   App,
-  AutoComplete,
   Button,
   Card,
   Empty,
@@ -17,6 +16,7 @@ import {
   Typography,
 } from "antd";
 import {
+  Box,
   CheckCircle2,
   Images,
   Pencil,
@@ -61,8 +61,10 @@ interface ProviderFormValues {
   api_key: string;
   image_enabled: boolean;
   video_enabled: boolean;
+  three_d_enabled: boolean;
   image_model: string;
   video_model: string;
+  three_d_model: string;
 }
 
 function nextProviderId(
@@ -111,6 +113,11 @@ export function buildProviderDraft(
     base_url: trimmedFormString(validated.base_url),
     image_model: trimmedFormString(merged.image_model),
     video_model: trimmedFormString(merged.video_model),
+    three_d_enabled:
+      typeof merged.three_d_enabled === "boolean"
+        ? merged.three_d_enabled
+        : editingProvider.three_d_enabled,
+    three_d_model: trimmedFormString(merged.three_d_model),
     api_key: trimmedFormString(validated.api_key),
   };
 }
@@ -124,8 +131,10 @@ function providerInput(provider: MediaProviderDraft): MediaProviderInput {
     base_url: provider.base_url,
     image_enabled: provider.image_enabled,
     video_enabled: provider.video_enabled,
+    three_d_enabled: provider.three_d_enabled,
     image_model: provider.image_model,
     video_model: provider.video_model,
+    three_d_model: provider.three_d_model,
     api_key: provider.api_key.trim() || null,
   };
 }
@@ -150,15 +159,21 @@ function normalizeRoutes(
   providers: MediaProviderDraft[],
   imageRoute: string | null,
   videoRoute: string | null,
+  threeDRoute: string | null,
 ): Pick<
   MediaGenerationDraft,
-  "default_image_provider" | "default_video_provider"
+  | "default_image_provider"
+  | "default_video_provider"
+  | "default_three_d_provider"
 > {
   const imageProviders = providers.filter(
     (item) => item.enabled && item.image_enabled && hasCredential(item),
   );
   const videoProviders = providers.filter(
     (item) => item.enabled && item.video_enabled && hasCredential(item),
+  );
+  const threeDProviders = providers.filter(
+    (item) => item.enabled && item.three_d_enabled && hasCredential(item),
   );
   return {
     default_image_provider: imageProviders.some(
@@ -171,11 +186,85 @@ function normalizeRoutes(
     )
       ? videoRoute
       : videoProviders[0]?.id ?? null,
+    default_three_d_provider: threeDProviders.some(
+      (item) => item.id === threeDRoute,
+    )
+      ? threeDRoute
+      : threeDProviders[0]?.id ?? null,
   };
 }
 
 function providerLogo(provider: MediaProviderName): string {
   return getProviderLogo(provider) ?? customProviderLogo;
+}
+
+interface ModelSelectorProps {
+  value?: string;
+  onChange?: (value: string) => void;
+  models: string[];
+  placeholder?: string;
+  customOptionLabel: (model: string) => string;
+}
+
+/**
+ * Searchable Select that always opens the full model list on click while still
+ * letting users enter and pick an arbitrary custom model ID.
+ */
+function ModelSelector({
+  value,
+  onChange,
+  models,
+  placeholder,
+  customOptionLabel,
+}: ModelSelectorProps) {
+  const [search, setSearch] = useState("");
+  const trimmedSearch = search.trim();
+  const options = useMemo(() => {
+    const items: Array<{ value: string; label: string }> = [];
+    const seen = new Set<string>();
+    for (const model of models) {
+      if (!seen.has(model)) {
+        seen.add(model);
+        items.push({ value: model, label: model });
+      }
+    }
+    if (value && !seen.has(value)) {
+      seen.add(value);
+      items.unshift({ value, label: value });
+    }
+    if (trimmedSearch && !seen.has(trimmedSearch)) {
+      items.unshift({
+        value: trimmedSearch,
+        label: customOptionLabel(trimmedSearch),
+      });
+    }
+    return items;
+  }, [models, value, trimmedSearch, customOptionLabel]);
+
+  return (
+    <Select
+      showSearch
+      allowClear
+      style={{ width: "100%" }}
+      value={value || undefined}
+      options={options}
+      placeholder={placeholder}
+      optionFilterProp="value"
+      filterOption={(input, option) =>
+        String(option?.value ?? "")
+          .toLowerCase()
+          .includes(input.trim().toLowerCase())
+      }
+      onSearch={setSearch}
+      onChange={(next) => {
+        setSearch("");
+        onChange?.(next ?? "");
+      }}
+      onDropdownVisibleChange={(open) => {
+        if (!open) setSearch("");
+      }}
+    />
+  );
 }
 
 export function MediaGenerationSettingsPanel() {
@@ -187,6 +276,12 @@ export function MediaGenerationSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState<{
+    image_models: string[];
+    video_models: string[];
+    three_d_models: string[];
+  } | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [providerModalOpen, setProviderModalOpen] = useState(false);
   const [providerModalMode, setProviderModalMode] =
@@ -229,6 +324,7 @@ export function MediaGenerationSettingsPanel() {
           providers: next.providers.map(providerInput),
           default_image_provider: next.default_image_provider,
           default_video_provider: next.default_video_provider,
+          default_three_d_provider: next.default_three_d_provider,
         });
         setConfig(draftSettings(saved));
         message.success(t("mediaGeneration.saved"));
@@ -250,6 +346,7 @@ export function MediaGenerationSettingsPanel() {
       if (!config) return null;
       const preset = presetMap.get(providerName);
       if (!preset) return null;
+      const supportsThreeD = preset.three_d_models.length > 0;
       return {
         id: nextProviderId(providerName, config.providers),
         provider: providerName,
@@ -258,8 +355,10 @@ export function MediaGenerationSettingsPanel() {
         base_url: preset.base_url,
         image_enabled: true,
         video_enabled: true,
+        three_d_enabled: supportsThreeD,
         image_model: preset.image_models[0] || "",
         video_model: preset.video_models[0] || "",
+        three_d_model: preset.three_d_models[0] || "",
         api_key_set: false,
         configured: false,
         api_key: "",
@@ -274,6 +373,7 @@ export function MediaGenerationSettingsPanel() {
   ) => {
     setProviderModalMode(mode);
     setEditingProvider(provider);
+    setFetchedModels(null);
     form.setFieldsValue({
       provider: provider.provider,
       display_name: provider.display_name,
@@ -281,8 +381,10 @@ export function MediaGenerationSettingsPanel() {
       api_key: "",
       image_enabled: provider.image_enabled,
       video_enabled: provider.video_enabled,
+      three_d_enabled: provider.three_d_enabled,
       image_model: provider.image_model,
       video_model: provider.video_model,
+      three_d_model: provider.three_d_model,
     });
     setProviderModalOpen(true);
   };
@@ -296,14 +398,17 @@ export function MediaGenerationSettingsPanel() {
     const next = makeProvider(providerName);
     if (!next) return;
     setEditingProvider(next);
+    setFetchedModels(null);
     form.setFieldsValue({
       provider: next.provider,
       display_name: next.display_name,
       base_url: next.base_url,
       image_enabled: next.image_enabled,
       video_enabled: next.video_enabled,
+      three_d_enabled: next.three_d_enabled,
       image_model: next.image_model,
       video_model: next.video_model,
+      three_d_model: next.three_d_model,
     });
   };
 
@@ -335,6 +440,7 @@ export function MediaGenerationSettingsPanel() {
       providers,
       config.default_image_provider,
       config.default_video_provider,
+      config.default_three_d_provider,
     );
     if (await persist({ ...config, providers, ...routes })) {
       setProviderModalOpen(false);
@@ -343,7 +449,7 @@ export function MediaGenerationSettingsPanel() {
 
   const handleTest = async (
     provider: MediaProviderDraft,
-    kind: "credentials" | "image" | "video",
+    kind: "credentials" | "image" | "video" | "3d",
   ) => {
     const testId = `${provider.id}:${kind}`;
     setTesting(testId);
@@ -362,7 +468,9 @@ export function MediaGenerationSettingsPanel() {
             ? "mediaGeneration.testSuccess"
             : kind === "image"
             ? "mediaGeneration.imageTestSuccess"
-            : "mediaGeneration.videoTestSuccess",
+            : kind === "video"
+            ? "mediaGeneration.videoTestSuccess"
+            : "mediaGeneration.threeDTestSuccess",
         ),
       );
     } catch (err) {
@@ -374,9 +482,55 @@ export function MediaGenerationSettingsPanel() {
     }
   };
 
-  const handleModalTest = async (kind: "credentials" | "image" | "video") => {
+  const handleModalTest = async (
+    kind: "credentials" | "image" | "video" | "3d",
+  ) => {
     const provider = await providerFromForm();
     if (provider) await handleTest(provider, kind);
+  };
+
+  const handleFetchModels = async () => {
+    const provider = await providerFromForm();
+    if (!provider) return;
+    setFetchingModels(true);
+    try {
+      const result = await mediaGenerationApi.fetchModels(
+        providerInput(provider),
+      );
+      if (!result.ok) {
+        message.error(result.error || t("mediaGeneration.fetchModelsFailed"));
+        return;
+      }
+      setFetchedModels({
+        image_models: result.image_models,
+        video_models: result.video_models,
+        three_d_models: result.three_d_models,
+      });
+      if (result.three_d_models.length > 0) {
+        message.success(
+          t("mediaGeneration.fetchModelsSuccess", {
+            imageCount: result.image_models.length,
+            videoCount: result.video_models.length,
+            threeDCount: result.three_d_models.length,
+          }),
+        );
+      } else {
+        message.success(
+          t("mediaGeneration.fetchModelsSuccessNo3d", {
+            imageCount: result.image_models.length,
+            videoCount: result.video_models.length,
+          }),
+        );
+      }
+    } catch (err) {
+      message.error(
+        err instanceof Error
+          ? err.message
+          : t("mediaGeneration.fetchModelsFailed"),
+      );
+    } finally {
+      setFetchingModels(false);
+    }
   };
 
   const handleToggleProvider = async (providerId: string, enabled: boolean) => {
@@ -388,6 +542,7 @@ export function MediaGenerationSettingsPanel() {
       providers,
       config.default_image_provider,
       config.default_video_provider,
+      config.default_three_d_provider,
     );
     await persist({ ...config, providers, ...routes });
   };
@@ -410,6 +565,7 @@ export function MediaGenerationSettingsPanel() {
           providers,
           config.default_image_provider,
           config.default_video_provider,
+          config.default_three_d_provider,
         );
         await persist({ ...config, providers, ...routes });
       },
@@ -436,16 +592,31 @@ export function MediaGenerationSettingsPanel() {
         value: provider.id,
         label: `${provider.display_name} · ${provider.video_model}`,
       })) ?? [];
+  const threeDRoutes =
+    config?.providers
+      .filter((provider) => provider.enabled && provider.three_d_enabled)
+      .map((provider) => ({
+        value: provider.id,
+        label: `${provider.display_name} · ${provider.three_d_model}`,
+      })) ?? [];
 
   const modalPreset = editingProvider
     ? presetMap.get(editingProvider.provider)
     : undefined;
+  const modalImageModels =
+    fetchedModels?.image_models ?? modalPreset?.image_models ?? [];
+  const modalVideoModels =
+    fetchedModels?.video_models ?? modalPreset?.video_models ?? [];
+  const modalThreeDModels =
+    fetchedModels?.three_d_models ?? modalPreset?.three_d_models ?? [];
+  const modalSupportsThreeD = (modalPreset?.three_d_models.length ?? 0) > 0;
   const watchedApiKey = Form.useWatch("api_key", form) ?? "";
   const modalHasKey = editingProvider
     ? editingProvider.api_key_set || Boolean(watchedApiKey.trim())
     : false;
   const modalImageEnabled = Form.useWatch("image_enabled", form) ?? true;
   const modalVideoEnabled = Form.useWatch("video_enabled", form) ?? true;
+  const modalThreeDEnabled = Form.useWatch("three_d_enabled", form) ?? false;
 
   if (loading || !config) {
     return <Text type="secondary">{t("mediaGeneration.loading")}</Text>;
@@ -513,6 +684,25 @@ export function MediaGenerationSettingsPanel() {
                 setConfig({
                   ...config,
                   default_video_provider: value || null,
+                })
+              }
+            />
+          </div>
+          <div className={styles.routeField}>
+            <div className={styles.routeFieldLabel}>
+              <Box size={14} />
+              <span>{t("mediaGeneration.defaultThreeDRoute")}</span>
+            </div>
+            <Select
+              allowClear
+              style={{ width: "100%" }}
+              value={config.default_three_d_provider}
+              options={threeDRoutes}
+              placeholder={t("mediaGeneration.selectDefaultThreeDRoute")}
+              onChange={(value) =>
+                setConfig({
+                  ...config,
+                  default_three_d_provider: value || null,
                 })
               }
             />
@@ -644,6 +834,20 @@ export function MediaGenerationSettingsPanel() {
                           title={provider.video_model}
                         >
                           {provider.video_model}
+                        </span>
+                      </div>
+                    )}
+                    {provider.three_d_enabled && (
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>
+                          <Box size={13} />
+                          {t("mediaGeneration.threeD")}
+                        </span>
+                        <span
+                          className={styles.detailValue}
+                          title={provider.three_d_model}
+                        >
+                          {provider.three_d_model}
                         </span>
                       </div>
                     )}
@@ -798,6 +1002,20 @@ export function MediaGenerationSettingsPanel() {
                         {preset.video_models[0]}
                       </span>
                     </div>
+                    {preset.three_d_models.length > 0 && (
+                      <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>
+                          <Box size={13} />
+                          {t("mediaGeneration.threeD")}
+                        </span>
+                        <span
+                          className={styles.detailValue}
+                          title={preset.three_d_models[0]}
+                        >
+                          {preset.three_d_models[0]}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className={styles.cardFooter}>
@@ -930,15 +1148,23 @@ export function MediaGenerationSettingsPanel() {
               {modalImageEnabled && (
                 <Form.Item
                   name="image_model"
-                  label={t("mediaGeneration.imageModel")}
+                  label={
+                    <span>
+                      {t("mediaGeneration.imageModel")}{" "}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        ({modalImageModels.length})
+                      </Text>
+                    </span>
+                  }
                   style={{ marginTop: 12, marginBottom: 0 }}
                   rules={[{ required: true, whitespace: true }]}
                 >
-                  <AutoComplete
-                    options={(modalPreset?.image_models ?? []).map((model) => ({
-                      value: model,
-                    }))}
+                  <ModelSelector
+                    models={modalImageModels}
                     placeholder={t("mediaGeneration.customModelPlaceholder")}
+                    customOptionLabel={(model) =>
+                      t("mediaGeneration.useCustomModel", { model })
+                    }
                   />
                 </Form.Item>
               )}
@@ -954,22 +1180,78 @@ export function MediaGenerationSettingsPanel() {
               {modalVideoEnabled && (
                 <Form.Item
                   name="video_model"
-                  label={t("mediaGeneration.videoModel")}
+                  label={
+                    <span>
+                      {t("mediaGeneration.videoModel")}{" "}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        ({modalVideoModels.length})
+                      </Text>
+                    </span>
+                  }
                   style={{ marginTop: 12, marginBottom: 0 }}
                   rules={[{ required: true, whitespace: true }]}
                 >
-                  <AutoComplete
-                    options={(modalPreset?.video_models ?? []).map((model) => ({
-                      value: model,
-                    }))}
+                  <ModelSelector
+                    models={modalVideoModels}
                     placeholder={t("mediaGeneration.customModelPlaceholder")}
+                    customOptionLabel={(model) =>
+                      t("mediaGeneration.useCustomModel", { model })
+                    }
                   />
                 </Form.Item>
               )}
             </Card>
+
+            {modalSupportsThreeD && (
+              <Card size="small">
+                <Space
+                  style={{ width: "100%", justifyContent: "space-between" }}
+                >
+                  <Text strong>{t("mediaGeneration.enableThreeD")}</Text>
+                  <Form.Item
+                    name="three_d_enabled"
+                    valuePropName="checked"
+                    noStyle
+                  >
+                    <Switch size="small" />
+                  </Form.Item>
+                </Space>
+                {modalThreeDEnabled && (
+                  <Form.Item
+                    name="three_d_model"
+                    label={
+                      <span>
+                        {t("mediaGeneration.threeDModel")}{" "}
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          ({modalThreeDModels.length})
+                        </Text>
+                      </span>
+                    }
+                    style={{ marginTop: 12, marginBottom: 0 }}
+                    rules={[{ required: true, whitespace: true }]}
+                  >
+                    <ModelSelector
+                      models={modalThreeDModels}
+                      placeholder={t("mediaGeneration.customModelPlaceholder")}
+                      customOptionLabel={(model) =>
+                        t("mediaGeneration.useCustomModel", { model })
+                      }
+                    />
+                  </Form.Item>
+                )}
+              </Card>
+            )}
           </div>
 
           <div className={styles.testActions}>
+            <Button
+              icon={<RefreshCw size={14} />}
+              loading={fetchingModels}
+              disabled={!modalHasKey}
+              onClick={() => void handleFetchModels()}
+            >
+              {t("mediaGeneration.fetchModels")}
+            </Button>
             <Button
               icon={<Zap size={14} />}
               loading={
@@ -1003,6 +1285,18 @@ export function MediaGenerationSettingsPanel() {
                 onClick={() => void handleModalTest("video")}
               >
                 {t("mediaGeneration.testVideoModel")}
+              </Button>
+            )}
+            {modalSupportsThreeD && modalThreeDEnabled && (
+              <Button
+                loading={
+                  editingProvider != null &&
+                  testing === `${editingProvider.id}:3d`
+                }
+                disabled={!modalHasKey}
+                onClick={() => void handleModalTest("3d")}
+              >
+                {t("mediaGeneration.testThreeDModel")}
               </Button>
             )}
           </div>
