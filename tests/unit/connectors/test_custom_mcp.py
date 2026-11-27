@@ -285,6 +285,7 @@ def test_shared_custom_name_collision_keeps_viewer_server_distinct(
 
 
 def test_rejects_public_http_and_allows_lan():
+    from octop.i18n import tr
     from octop.infra.errors import ErrorCode, OctopError
 
     with pytest.raises(OctopError) as http_exc:
@@ -294,9 +295,11 @@ def test_rejects_public_http_and_allows_lan():
         )
     assert http_exc.value.code is ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED
     assert http_exc.value.details["host"] == "example.com"
-    assert "example.com" in http_exc.value.message
+    assert http_exc.value.message == tr(
+        "errors.CONNECTOR_MCP_HTTPS_REQUIRED", "en", host="example.com"
+    )
     zh = http_exc.value.localized_message("zh")
-    assert "example.com" in zh
+    assert zh == tr("errors.CONNECTOR_MCP_HTTPS_REQUIRED", "zh", host="example.com")
     assert "{host}" not in zh
     assert "HTTPS" in zh
 

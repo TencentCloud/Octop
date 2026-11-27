@@ -767,17 +767,20 @@ class OctopServer:
         wizard_home = self.paths.root
         if config.require_setup_password:
             try:
-                new_pw = _wizard_pw.boot_self_heal(
-                    wizard_home,
-                    user_count=user_count,
-                    legacy_home=Path.home(),
+                has_wizard_secret = (
+                    _wizard_pw.boot_self_heal(
+                        wizard_home,
+                        user_count=user_count,
+                        legacy_home=Path.home(),
+                    )
+                    is not None
                 )
             except OSError as err:
                 logger.warning("wizard self-heal failed: %s", err)
-                new_pw = None
+                has_wizard_secret = False
         else:
-            new_pw = None
-        if new_pw is not None:
+            has_wizard_secret = False
+        if has_wizard_secret:
             file_path = _wizard_pw.resolve_password_path(wizard_home, legacy_home=Path.home())
             try:
                 rel = file_path.relative_to(Path.home())
@@ -791,7 +794,7 @@ class OctopServer:
                 "\n\033[33m"
                 "╔══════════════════════════════════════════════════════════╗\n"
                 "║  Octop first-run wizard password (one-time use):          ║\n"
-                f"║  {new_pw:<54}  ║\n"
+                "║  Saved to the local password file (not printed to logs). ║\n"
                 "║  Open the dashboard and paste it into the setup wizard.  ║\n"
                 f"║  {file_label:<54}  ║\n"
                 "╚══════════════════════════════════════════════════════════╝"

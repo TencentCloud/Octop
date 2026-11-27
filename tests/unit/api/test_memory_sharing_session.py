@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import json
+import shlex
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -200,17 +202,29 @@ def test_save_session_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     assert router_module._save_session(server, 7, _session()) is False
 
 
+def _extract_default_src(script: str) -> str:
+    for line in script.splitlines():
+        if line.startswith("DEFAULT_SRC="):
+            tokens = shlex.split(line)
+            if tokens:
+                return tokens[0].split("=", 1)[1]
+    raise AssertionError("DEFAULT_SRC assignment missing from install script")
+
+
 def test_install_script_is_pinned_and_carries_no_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """R1/R7：安装脚本由 Octop 托管、来源固定 tag、GET 不产生任何凭证。"""
     monkeypatch.delenv("OCTOP_MEMORY_INSTALLER_URL", raising=False)
     monkeypatch.setenv("OCTOP_MEMORY_SERVICE_URL", "http://memory.internal:8790")
 
     body = router_module.install_script_body("http://memory.internal:8790/mcp/")
+    default_src = _extract_default_src(body)
+    parsed_src = urlparse(default_src)
 
-    assert "/v1.0.7/plugins/harness/install.sh" in body
+    assert parsed_src.scheme == "https"
+    assert parsed_src.hostname == "raw.githubusercontent.com"
+    assert parsed_src.path == "/TencentCloud/octop-memory/v1.0.7/plugins/harness/install.sh"
     assert "OCTOP_MEMORY_REF:-v1.0.7" in body
     assert "getpass.getpass" in body
-    assert "raw.githubusercontent.com" in body
     assert "/main/" not in body
     assert "http://memory.internal:8790/mcp/" in body
     assert "mcp_" not in body  # 不夹带任何 token
@@ -221,6 +235,7 @@ def test_install_script_honours_mirror_override(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("OCTOP_MEMORY_INSTALLER_URL", "http://octop.internal/mirror/install.sh")
 
     body = router_module.install_script_body("http://memory.internal:8790/mcp/")
+    default_src = _extract_default_src(body)
 
-    assert "http://octop.internal/mirror/install.sh" in body
-    assert "raw.githubusercontent.com" not in body
+    assert default_src == "http://octop.internal/mirror/install.sh"
+    assert urlparse(default_src).hostname == "octop.internal"

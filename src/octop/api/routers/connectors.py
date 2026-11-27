@@ -1339,9 +1339,12 @@ async def test_instance(
             instance_id=instance_id,
             config=server.services.config,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("connector test failed for %s", instance_id)
-        return {"ok": False, "error": str(exc)}
+        return {
+            "ok": False,
+            "error": tr("connector.probe_failed", resolve_request_locale(request)),
+        }
 
 
 @router.post("/connectors/test-credentials", summary="Test credentials")
@@ -1379,9 +1382,12 @@ async def test_credentials(
             instance_id="probe",
             config=server.services.config,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("connector credential test failed for %s", body.kind)
-        return {"ok": False, "error": str(exc)}
+        return {
+            "ok": False,
+            "error": tr("connector.probe_failed", resolve_request_locale(request)),
+        }
 
 
 @router.get(

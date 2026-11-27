@@ -387,6 +387,7 @@
     }
   },
   "connector": {
+    "probe_failed": "Connector probe failed. Check the server logs for details.",
     "oauth": {
       "callback_auth_failed": "Authorization failed: {error}",
       "callback_missing_params": "Missing authorization code or state.",
@@ -1140,7 +1141,8 @@
     "error_health": "Laya did not become ready in time. Copy the log and send it to Octop.",
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
-    "error_stalled": "The install produced no result for too long and was stopped."
+    "error_stalled": "The install produced no result for too long and was stopped.",
+    "error_failed": "The install failed unexpectedly. Check the server logs for details."
   },
   "text_assist": {
     "kinds": {

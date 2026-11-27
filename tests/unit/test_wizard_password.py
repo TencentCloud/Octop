@@ -139,3 +139,26 @@ def test_boot_self_heal_migrates_legacy_secret(tmp_path: Path) -> None:
     assert (primary_home / WIZARD_FILE_NAME).read_text(
         encoding="utf-8"
     ).strip() == "legacy-secret-456"
+
+
+def test_emit_wizard_password_prints_path_without_plaintext_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from octop.config import OctopConfig
+    from octop.infra.server import OctopServer
+
+    user_home = tmp_path / "user_home"
+    octop_home = tmp_path / "octop_home"
+    user_home.mkdir()
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: user_home))
+
+    srv = OctopServer(home=octop_home)
+    srv.config = OctopConfig(require_setup_password=True)
+    srv._emit_wizard_password(user_count=0)
+    pw = read_password(octop_home, legacy_home=user_home)
+    assert pw is not None
+    captured = capsys.readouterr().out
+    assert "octop-login.txt" in captured
+    assert pw not in captured

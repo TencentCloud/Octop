@@ -182,3 +182,27 @@ async def test_install_reports_disk_shortage_without_downloading(tmp_path: Path)
     events = await _events(runtime)
     assert events[-1]["success"] is False
     assert any("GB" in str(item.get("log", "")) for item in events)
+
+
+@pytest.mark.asyncio
+async def test_install_does_not_expose_unexpected_exception_details(tmp_path: Path) -> None:
+    async def broken_runner(
+        _argv: list[str],
+        _env: dict[str, str],
+        _emit: object,
+    ) -> int:
+        raise RuntimeError("internal-traceback-detail")
+
+    runtime = LayaRuntime(
+        tmp_path,
+        runner=broken_runner,
+        base_python=Path("python3.12"),
+        health_check=lambda: False,
+        port_busy=lambda: False,
+        free_bytes=lambda: 10 * 1024**3,
+    )
+    events = await _events(runtime)
+    assert events[-1]["success"] is False
+    logs = "\n".join(str(item.get("log", "")) for item in events)
+    assert "internal-traceback-detail" not in logs
+    assert "failed unexpectedly" in logs

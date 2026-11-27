@@ -387,6 +387,7 @@
     }
   },
   "connector": {
+    "probe_failed": "连接器探测失败，请查看服务端日志排查详情。",
     "oauth": {
       "callback_auth_failed": "授权失败：{error}",
       "callback_missing_params": "缺少 code 或 state。",
@@ -1140,7 +1141,8 @@
     "error_health": "Laya 没有在限定时间内就绪。请复制日志交给 Octop 继续排查。",
     "error_exited": "laya-serve 在就绪前退出了。",
     "error_not_installed": "尚未安装 Laya。",
-    "error_stalled": "安装长时间没有结果，已停止。"
+    "error_stalled": "安装长时间没有结果，已停止。",
+    "error_failed": "安装意外失败，请查看服务端日志排查详情。"
   },
   "text_assist": {
     "kinds": {

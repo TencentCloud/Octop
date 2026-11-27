@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from octop.infra.agents.settings.acp import host_runner_argv
+from octop.infra.utils.host_dirs import assert_safe_host_file
 
 logger = logging.getLogger(__name__)
 
@@ -252,10 +253,13 @@ def _host_env(extra: dict[str, str] | None) -> dict[str, str]:
 
 
 def _which(name: str, env: dict[str, str]) -> str | None:
-    if not name:
+    if not name or "\0" in name:
         return None
-    if os.path.isabs(name) or "/" in name or "\\" in name:
-        return name if os.path.isfile(name) else None
+    if os.path.isabs(name) or "/" in name or "\\" in name or name.startswith("~"):
+        try:
+            return assert_safe_host_file(name, restrict_to_home=False)
+        except ValueError:
+            return None
     return shutil.which(name, path=env.get("PATH"))
 
 
