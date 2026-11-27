@@ -541,6 +541,9 @@ class HitlChannelCoordinator:
             async for ev in resume_stream:
                 yield ev
         except Exception as exc:
+            from octop.infra.gateway.process.processor import discard_agent_file_changes
+
+            discard_agent_file_changes(agent_manager, record.agent_id, record.thread_id)
             yield MessageEvent.error_event(tr("hitl.resume_failed", lang, error=str(exc)))
             return
         finally:
@@ -713,6 +716,9 @@ class HitlChannelCoordinator:
             finally:
                 await close_event_stream(resume_stream)
         except Exception as exc:
+            from octop.infra.gateway.process.processor import discard_agent_file_changes
+
+            discard_agent_file_changes(agent_manager, ctx.agent_id, thread_id)
             self._restore_sticky(stamps)
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))
