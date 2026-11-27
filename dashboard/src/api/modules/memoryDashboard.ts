@@ -340,6 +340,8 @@ export interface CodexReviewRun {
 export interface StatsCounts {
   raw_events: number;
   atoms: number;
+  /** Archived atoms, when reported by the installed memory library. */
+  atoms_archived?: number;
   entities: number;
   dirty_pages: number;
   episodes: number;

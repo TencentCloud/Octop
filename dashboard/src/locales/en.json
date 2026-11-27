@@ -5474,6 +5474,7 @@
       "memoryOn": "Memory active",
       "memoryOff": "Memory off",
       "atoms": "Long-term memories",
+      "atomsArchived": "Archived: {{count}}",
       "entities": "Key topics",
       "episodes": "Emotional moments",
       "rawEvents": "Conversation memory",
@@ -5628,6 +5629,9 @@
       "task": "Task"
     },
     "list": {
+      "includeArchived": "Include archived",
+      "archived": "Archived",
+      "active": "Active",
       "importanceMin": "Importance at least",
       "kind": "Type"
     },

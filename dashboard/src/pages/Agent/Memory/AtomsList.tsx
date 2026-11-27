@@ -17,6 +17,7 @@ import {
   Progress,
   Select,
   Space,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -72,12 +73,13 @@ export default function AtomsList({ agentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<AtomKind | "">("");
   const [importance, setImportance] = useState<Importance | "">("");
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [selected, setSelected] = useState<AtomItem | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const listGate = useMemoryRequestGate(
-    JSON.stringify([agentId, page, kind, importance]),
+    JSON.stringify([agentId, page, kind, importance, includeArchived]),
   );
   const entityGate = useMemoryRequestGate(agentId);
   const actionModal = useRef<{ destroy: () => void } | null>(null);
@@ -86,6 +88,7 @@ export default function AtomsList({ agentId }: Props) {
     setItems([]);
     setTotal(0);
     setPage(1);
+    setIncludeArchived(false);
     setLoading(Boolean(agentId));
     setSelected(null);
     setHoveredId(null);
@@ -107,6 +110,7 @@ export default function AtomsList({ agentId }: Props) {
     };
     if (kind) body.candidate_type = kind;
     if (importance) body.importance_min = importance;
+    if (includeArchived) body.include_deprecated = true;
     try {
       const r = await memoryDashboardApi.listAtoms(agentId, body);
       if (!isCurrent()) return;
@@ -117,7 +121,7 @@ export default function AtomsList({ agentId }: Props) {
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [agentId, page, kind, importance, listGate]);
+  }, [agentId, page, kind, importance, includeArchived, listGate]);
   const reload = useRef(load);
   useLayoutEffect(() => {
     reload.current = load;
@@ -197,6 +201,21 @@ export default function AtomsList({ agentId }: Props) {
         }}
         options={IMPORTANCE_OPTIONS}
       />
+      <Space size={8}>
+        <Switch
+          size="small"
+          aria-label={t("memory.list.includeArchived", "包含已归档")}
+          checked={includeArchived}
+          onChange={(checked) => {
+            setIncludeArchived(checked);
+            setPage(1);
+            setItems([]);
+            setSelected(null);
+            setHoveredId(null);
+          }}
+        />
+        <span>{t("memory.list.includeArchived", "包含已归档")}</span>
+      </Space>
       <Button
         size="small"
         icon={<Plus size={14} />}
@@ -209,7 +228,7 @@ export default function AtomsList({ agentId }: Props) {
 
   // Guided empty only when no filter is active — a filtered-out list must
   // keep the plain empty so it doesn't read as "distillation pending".
-  const noFilterActive = !kind && !importance;
+  const noFilterActive = !kind && !importance && !includeArchived;
 
   return (
     <>
@@ -241,7 +260,11 @@ export default function AtomsList({ agentId }: Props) {
           >
             <Space size={4}>
               <ImportanceStars importance={a.importance} />
-              {isAtomDeprecated(a) ? <Tag color="red">已忘记</Tag> : null}
+              <Tag color={isAtomDeprecated(a) ? "default" : "green"}>
+                {isAtomDeprecated(a)
+                  ? t("memory.list.archived", "已归档")
+                  : t("memory.list.active", "在用")}
+              </Tag>
             </Space>
             <div style={{ marginTop: 4, fontSize: 13 }}>{a.assertion}</div>
             <div style={{ marginTop: 2, fontSize: 12, color: "#8c8c8c" }}>
@@ -304,8 +327,10 @@ export default function AtomsList({ agentId }: Props) {
             <Space size={8} wrap style={{ marginBottom: 12 }}>
               {atom.kind ? <Tag>{kindLabel(atom.kind)}</Tag> : null}
               <ImportanceStars importance={atom.importance} />
-              <Tag color={isAtomDeprecated(atom) ? "red" : "green"}>
-                {isAtomDeprecated(atom) ? "已忘记" : "在用"}
+              <Tag color={isAtomDeprecated(atom) ? "default" : "green"}>
+                {isAtomDeprecated(atom)
+                  ? t("memory.list.archived", "已归档")
+                  : t("memory.list.active", "在用")}
               </Tag>
             </Space>
 

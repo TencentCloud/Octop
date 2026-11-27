@@ -51,6 +51,26 @@ beforeEach(() => {
 });
 
 describe("<Overview />", () => {
+  it.each([0, 7])(
+    "shows a reported archive count of %i separately",
+    async (count) => {
+      stubOverview();
+      api.statsCounts.mockResolvedValue(
+        statsCountsFixture({ atoms_archived: count }),
+      );
+      render(<Overview agentId="test-agent" />);
+      const hint = await screen.findByText(`另 ${count} 条已归档`);
+      expect(hint.parentElement).toHaveTextContent("长期记忆5");
+    },
+  );
+
+  it("does not invent an archive count for an older memory library", async () => {
+    stubOverview();
+    render(<Overview agentId="test-agent" />);
+    await screen.findByText("记忆运行中");
+    expect(screen.queryByText(/条已归档/)).not.toBeInTheDocument();
+  });
+
   it("renders a compact status, metrics, pipeline, and charts", async () => {
     stubOverview();
     render(<Overview agentId="ZYWZTD" />);

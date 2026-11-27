@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -66,7 +66,7 @@ describe("<AtomsList />", () => {
   });
 
   // Regression: deprecation state comes from deprecated_at because the backend has no status field.
-  // Active atoms show the active label and deprecate action; deprecated atoms show the forgotten label only.
+  // Active atoms allow mutations; archived atoms remain readable without mutation actions.
   it("derives active/deprecated from deprecated_at in the drawer", async () => {
     api.listAtoms.mockResolvedValue(
       listAtomsResp([
@@ -91,14 +91,124 @@ describe("<AtomsList />", () => {
     await waitFor(() => {
       expect(screen.getByText("弃用这条记忆")).toBeInTheDocument();
     });
-    expect(screen.getByText("在用")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByText("在用"),
+    ).toBeInTheDocument();
 
-    // Deprecated atom: no deprecate button, forgotten label is shown.
+    // Deprecated atom: no edit/deprecate buttons, archive label is shown.
     await user.click(screen.getByText("已弃用记忆。"));
     await waitFor(() => {
-      expect(screen.getAllByText("已忘记").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("已归档")).toHaveLength(2);
     });
     expect(screen.queryByText("弃用这条记忆")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "编辑这条记忆" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("includes archived rows on demand and resets pagination in both directions", async () => {
+    const live = makeAtom({ id: "live", assertion: "An active preference" });
+    const archived = makeAtom({
+      id: "archived",
+      assertion: "An archived preference",
+      deprecated_at: "2026-06-28T00:00:00Z",
+    });
+    api.listAtoms.mockImplementation(async (_agentId, body) => ({
+      items: body.include_deprecated ? [live, archived] : [live],
+      total: 45,
+      has_more: true,
+    }));
+    const user = userEvent.setup();
+    render(<AtomsList agentId="test-agent" />);
+    await screen.findByText(live.assertion);
+    const toggle = screen.getByRole("switch", { name: "包含已归档" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.queryByText(archived.assertion)).not.toBeInTheDocument();
+
+    await user.click(screen.getByTitle("2"));
+    await waitFor(() =>
+      expect(api.listAtoms).toHaveBeenLastCalledWith("test-agent", {
+        offset: 20,
+        limit: 20,
+      }),
+    );
+    await user.click(toggle);
+    await screen.findByText(archived.assertion);
+    expect(toggle).toBeChecked();
+    expect(api.listAtoms).toHaveBeenLastCalledWith("test-agent", {
+      offset: 0,
+      limit: 20,
+      include_deprecated: true,
+    });
+    expect(screen.getByText("已归档")).toBeInTheDocument();
+    expect(screen.getByText("在用")).toBeInTheDocument();
+
+    await user.click(screen.getByTitle("2"));
+    await waitFor(() =>
+      expect(api.listAtoms).toHaveBeenLastCalledWith("test-agent", {
+        offset: 20,
+        limit: 20,
+        include_deprecated: true,
+      }),
+    );
+    await user.click(toggle);
+    await waitFor(() => {
+      expect(api.listAtoms).toHaveBeenLastCalledWith("test-agent", {
+        offset: 0,
+        limit: 20,
+      });
+      expect(screen.queryByText(archived.assertion)).not.toBeInTheDocument();
+    });
+  });
+
+  it("ignores an archive request that resolves after the switch is turned off", async () => {
+    const live = makeAtom({ assertion: "Current active memory" });
+    const archived = makeAtom({
+      assertion: "Late archived memory",
+      deprecated_at: "2026-06-28T00:00:00Z",
+    });
+    let resolveArchived!: (value: ReturnType<typeof listAtomsResp>) => void;
+    const delayed = new Promise<ReturnType<typeof listAtomsResp>>((resolve) => {
+      resolveArchived = resolve;
+    });
+    api.listAtoms.mockImplementation(async (_agentId, body) =>
+      body.include_deprecated ? delayed : listAtomsResp([live]),
+    );
+    const user = userEvent.setup();
+    render(<AtomsList agentId="test-agent" />);
+    await screen.findByText(live.assertion);
+    const toggle = screen.getByRole("switch", { name: "包含已归档" });
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(api.listAtoms).toHaveBeenLastCalledWith("test-agent", {
+        offset: 0,
+        limit: 20,
+        include_deprecated: true,
+      }),
+    );
+    await user.click(toggle);
+    await screen.findByText(live.assertion);
+    await act(async () => resolveArchived(listAtomsResp([archived])));
+    expect(screen.queryByText(archived.assertion)).not.toBeInTheDocument();
+    expect(screen.getByText(live.assertion)).toBeInTheDocument();
+  });
+
+  it("resets archive visibility when changing agents", async () => {
+    api.listAtoms.mockResolvedValue(listAtomsResp([makeAtom()]));
+    const user = userEvent.setup();
+    const { rerender } = render(<AtomsList agentId="first-agent" />);
+    await screen.findByText("用户喜欢喝美式咖啡。");
+    await user.click(screen.getByRole("switch", { name: "包含已归档" }));
+    rerender(<AtomsList agentId="second-agent" />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "包含已归档" }),
+      ).not.toBeChecked();
+      expect(api.listAtoms).toHaveBeenLastCalledWith("second-agent", {
+        offset: 0,
+        limit: 20,
+      });
+    });
   });
 
   it("renders Empty when API returns no items", async () => {

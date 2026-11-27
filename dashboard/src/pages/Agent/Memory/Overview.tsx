@@ -180,6 +180,13 @@ export default function Overview({
           label={t("memory.overview.atoms", "长期记忆")}
           value={state.counts?.atoms}
           delta={state.counts?.atoms_delta_7d}
+          hint={
+            state.counts?.atoms_archived != null
+              ? t("memory.overview.atomsArchived", "另 {{count}} 条已归档", {
+                  count: state.counts.atoms_archived,
+                })
+              : undefined
+          }
           loading={state.firstLoading}
         />
         <SummaryCard
@@ -377,6 +384,7 @@ function SummaryCard({
   label,
   value,
   delta,
+  hint,
   loading,
   warn,
 }: {
@@ -385,6 +393,7 @@ function SummaryCard({
   label: string;
   value: number | undefined;
   delta?: number;
+  hint?: string;
   loading: boolean;
   warn?: boolean;
 }) {
@@ -400,6 +409,7 @@ function SummaryCard({
             {value ?? "-"}
           </strong>
         )}
+        {hint ? <small className={styles.summaryHint}>{hint}</small> : null}
       </div>
       {delta !== undefined && delta > 0 ? (
         <span className={styles.summaryDelta}>+{delta} / 7d</span>

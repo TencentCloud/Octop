@@ -5389,6 +5389,7 @@
       "memoryOff": "记忆已关闭",
       "subtitleRawEventsUnit": "条原始事件",
       "atoms": "长期记忆",
+      "atomsArchived": "另 {{count}} 条已归档",
       "entities": "关键主题",
       "episodes": "情绪片段",
       "rawEvents": "对话记忆",
@@ -5463,6 +5464,9 @@
       "low": "一般"
     },
     "list": {
+      "includeArchived": "包含已归档",
+      "archived": "已归档",
+      "active": "在用",
       "kind": "类型",
       "importanceMin": "重要程度不低于"
     },

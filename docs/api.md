@@ -460,6 +460,22 @@ input above 100,000 characters is explicitly refused. Current documents are chec
 when accepting a document-derived candidate; stale candidates require review of the new
 version. The file save remains successful if the subsequent semantic check fails.
 
+### Browsing archived memory
+
+The dashboard's long-term memory list defaults to active atoms. Enable
+**Include archived** to send `include_deprecated: true` through the existing
+atom-list API; pagination and type/importance filters apply to the combined result.
+Rows and their detail drawer distinguish **Active** from **Archived** using
+`deprecated_at`. Archived rows remain readable without edit/deprecate actions.
+Changing this switch resets pagination, and opening another expert resets it off.
+
+The overview displays the optional `atoms_archived` count separately from active
+`atoms`. Older memory libraries may omit this field; the dashboard then omits the
+archive count instead of assuming zero. The corrected count contract is proposed
+in [octop-memory PR #72](https://github.com/TencentCloud/octop-memory/pull/72);
+using it requires a supporting memory release and subsequent dependency adoption.
+This frontend change does not alter archive writes, recall, or stored evidence.
+
 ### Current-expert memory storage maintenance
 
 SQLite restore requires a harness runtime with `MemoryMiddleware.pause_background`
