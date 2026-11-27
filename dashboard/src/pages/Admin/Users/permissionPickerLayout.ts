@@ -51,7 +51,11 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "knowledge-bases",
     labelKey: "nav.knowledgeBases",
-    permissions: ["knowledge_bases", "knowledge_settings"],
+    permissions: [
+      "knowledge_bases",
+      "knowledge_bases:create",
+      "knowledge_settings",
+    ],
   },
   {
     key: "bridge",
