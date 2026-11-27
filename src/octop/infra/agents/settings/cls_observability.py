@@ -179,9 +179,13 @@ class ClsObservabilitySettings:
 
     @property
     def configured(self) -> bool:
+        return self.enabled and self.can_probe
+
+    @property
+    def can_probe(self) -> bool:
         return bool(
-            self.enabled
-            and _REGION_RE.fullmatch(self.region or "")
+            _REGION_RE.fullmatch(self.region or "")
+            and self.access_type in CLS_ACCESS_TYPES
             and self.topic_id
             and self.secret_id_set
             and self.secret_key_set
@@ -684,18 +688,17 @@ def env_cls_enabled() -> bool:
     return os.environ.get("OCTOP_AGENTOBS_ENABLED", "").strip().lower() in {"1", "true", "yes"}
 
 
-def env_cls_harness_config() -> Any | None:
-    """Build a CLS ``LangfuseConfig`` from deployment environment variables, or ``None``."""
-    if not env_cls_enabled():
-        return None
+def _env_cls_credentials() -> tuple[str, str, str]:
+    return (
+        os.environ.get("TENCENTCLOUD_SECRET_ID", "").strip(),
+        os.environ.get("TENCENTCLOUD_SECRET_KEY", "").strip(),
+        os.environ.get("TENCENTCLOUD_TOKEN", "").strip(),
+    )
 
-    from octop_harness.observability.langfuse import LangfuseConfig  # noqa: PLC0415
 
-    region = os.environ.get("CLS_DEFAULT_REGION", "").strip()
-    topic = os.environ.get("CLS_TOPIC_ID", "").strip()
-    secret_id = os.environ.get("TENCENTCLOUD_SECRET_ID", "").strip()
-    secret_key = os.environ.get("TENCENTCLOUD_SECRET_KEY", "").strip()
-    token = os.environ.get("TENCENTCLOUD_TOKEN", "").strip()
+def env_cls_settings() -> ClsObservabilitySettings:
+    """Read the deployment settings without registering a tracer or exposing credentials."""
+    secret_id, secret_key, _ = _env_cls_credentials()
     access_type = os.environ.get("CLS_ACCESS_TYPE", "Langfuse").strip() or "Langfuse"
     service_name = (
         os.environ.get("CLS_SERVICE_NAME", "").strip()
@@ -713,26 +716,59 @@ def env_cls_harness_config() -> Any | None:
         "yes",
     }
 
-    if (
-        not _REGION_RE.fullmatch(region)
-        or not all((topic, secret_id, secret_key))
-        or access_type not in CLS_ACCESS_TYPES
-    ):
+    return ClsObservabilitySettings(
+        enabled=env_cls_enabled(),
+        region=os.environ.get("CLS_DEFAULT_REGION", "").strip(),
+        topic_id=os.environ.get("CLS_TOPIC_ID", "").strip(),
+        application_id="",
+        application_name=service_name,
+        access_type=access_type,
+        use_internal_endpoint=use_internal,
+        mask_content=mask_content,
+        secret_id_masked=mask_secret_id(secret_id),
+        secret_id_set=bool(secret_id),
+        secret_key_set=bool(secret_key),
+    )
+
+
+async def probe_env_cls_connection(cfg: ClsObservabilitySettings) -> dict[str, Any]:
+    sid, skey, token = _env_cls_credentials()
+    return await asyncio.to_thread(
+        verify_cls_connection,
+        cfg.region,
+        sid,
+        skey,
+        topic_id=cfg.topic_id,
+        use_internal_endpoint=cfg.use_internal_endpoint,
+        token=token,
+    )
+
+
+def env_cls_harness_config() -> Any | None:
+    """Build a CLS ``LangfuseConfig`` from deployment environment variables, or ``None``."""
+    if not env_cls_enabled():
+        return None
+
+    from octop_harness.observability.langfuse import LangfuseConfig  # noqa: PLC0415
+
+    cfg = env_cls_settings()
+    if not cfg.configured:
         logger.error(
             "Tencent Cloud CLS tracing disabled: set CLS_DEFAULT_REGION, CLS_TOPIC_ID, "
             "TENCENTCLOUD_SECRET_ID and TENCENTCLOUD_SECRET_KEY"
         )
         return LangfuseConfig(enabled=False)
 
+    secret_id, secret_key, token = _env_cls_credentials()
     return register_cls_langfuse_client(
-        region=region,
-        topic_id=topic,
+        region=cfg.region,
+        topic_id=cfg.topic_id,
         secret_id=secret_id,
         secret_key=secret_key,
-        service_name=service_name,
-        access_type=access_type,
-        use_internal_endpoint=use_internal,
-        mask_content=mask_content,
+        service_name=cfg.application_name,
+        access_type=cfg.access_type,
+        use_internal_endpoint=cfg.use_internal_endpoint,
+        mask_content=cfg.mask_content,
         token=token,
     )
 

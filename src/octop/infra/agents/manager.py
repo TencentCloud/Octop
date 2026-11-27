@@ -21,6 +21,7 @@ from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
 from octop_memory import MemoryService
 
+from octop.i18n import tr
 from octop.i18n.domains.agents import (
     AGENT_START_TIMEOUT,
     NO_MODELS_CONFIGURED,
@@ -52,6 +53,8 @@ from octop.infra.agents.settings.cls_observability import (
     ClsObservabilitySettingsStore,
     env_cls_enabled,
     env_cls_harness_config,
+    env_cls_settings,
+    probe_env_cls_connection,
 )
 from octop.infra.agents.settings.compaction import (
     COMPACTION_CONFIG_KEY,
@@ -887,6 +890,26 @@ class AgentManager:
         if env_cls_enabled():
             return "cls_env"
         return "none"
+
+    def effective_cls_settings(self) -> tuple[str, ClsObservabilitySettings]:
+        backend = self.active_observability_backend()
+        if backend == "cls_env":
+            return backend, env_cls_settings()
+        return backend, self._cls_observability.load()
+
+    async def test_effective_cls_connection(self, locale: str) -> dict[str, Any]:
+        backend, cfg = self.effective_cls_settings()
+        if not cfg.can_probe:
+            key = "environment_incomplete" if backend == "cls_env" else "saved_incomplete"
+            return {
+                "ok": False,
+                "api_ok": None,
+                "otlp_ok": None,
+                "error": tr(f"cls_cli.{key}", locale),
+            }
+        if backend == "cls_env":
+            return await probe_env_cls_connection(cfg)
+        return await self._cls_observability.test_connection()
 
     def _resolve_observability_harness_config(self) -> Any | None:
         cls_cfg = self._cls_observability.harness_config()

@@ -13,6 +13,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
         "System service lifecycle (start/stop/restart/status).",
     ),
     "config": (".commands.config", "config_group", "CLI defaults (pinned user/agent)."),
+    "cls": (".commands.cls", "cls_group", "Configure and test Tencent Cloud CLS tracing."),
     "user": (".commands.user", "user", "User management commands (admin only)."),
     "agent": (".commands.agent", "agent", "Agent lifecycle commands."),
     "chats": (".commands.chats", "chats", "Chat REPL and session management."),

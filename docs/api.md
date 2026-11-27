@@ -673,6 +673,9 @@ instead of `streamable_http`.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`/`PUT` | `/admin/observability` | admin | Langfuse configuration (host, project, env) |
+| `GET`/`PUT` | `/admin/observability/cls` | `observability` | Read or save the database-backed CLS configuration |
+| `GET` | `/admin/observability/cls/effective` | `observability` | Masked CLS settings, including deployment settings when `active_backend=cls_env` |
+| `POST` | `/admin/observability/cls/effective/test` | `observability` | Probe the configured Trace Topic from the server, using the same source as the effective settings view |
 | `GET`    | `/admin/security` | admin | global security policy |
 | `PUT`    | `/admin/security` | admin | update global policy |
 | `GET`    | `/admin/security/tool-guard/rules` | admin | active command guard rules |
