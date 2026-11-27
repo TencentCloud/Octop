@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -106,10 +107,40 @@ def normalize_plugin_download_url(url: str) -> str:
     return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
 
 
-def _load_plugin_dir(plugin_dir: Path, *, install_deps: bool) -> LoadedPlugin:
+def _purge_plugin_modules(plugin_id: str) -> None:
+    """Evict cached plugin entry and submodule imports before reload or unload."""
+    safe_id = plugin_id.replace("-", "_")
+    module_name = f"harness_plugin_{safe_id}"
+    sys.modules.pop(module_name, None)
+    prefix = module_name + "."
+    for key in list(sys.modules):
+        if key.startswith(prefix):
+            sys.modules.pop(key, None)
+    importlib.invalidate_caches()
+
+
+def _load_plugin_dir(
+    plugin_dir: Path,
+    *,
+    install_deps: bool,
+    plugin_id: str | None = None,
+) -> LoadedPlugin:
     """Load one plugin, accepting the pre-rename ``harness_agent`` import."""
     ensure_legacy_harness_agent_alias()
-    return load_plugin_dir(plugin_dir, install_deps=install_deps)
+    target_id = plugin_id
+    if target_id is None:
+        try:
+            target_id = PluginManifest.load(plugin_dir / "plugin.yaml").id
+        except Exception:
+            target_id = None
+    if target_id:
+        _purge_plugin_modules(target_id)
+    try:
+        return load_plugin_dir(plugin_dir, install_deps=install_deps)
+    except Exception:
+        if target_id:
+            _purge_plugin_modules(target_id)
+        raise
 
 
 def _read_global_plugins(config_path: Path) -> dict[str, bool]:
@@ -741,7 +772,13 @@ class PluginManager:
                     PluginRegistry().register(old)
                     loaded.append(old)
                 else:
-                    loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
+                    loaded.append(
+                        _load_plugin_dir(
+                            plugin_dir,
+                            install_deps=install_deps,
+                            plugin_id=manifest.id,
+                        )
+                    )
                 if str(manifest.kind) == "channel":
                     _CHANNEL_FINGERPRINTS[manifest.id] = fingerprint
             except Exception as exc:
@@ -751,9 +788,14 @@ class PluginManager:
                     exc,
                     exc_info=True,
                 )
+        loaded_ids = {plugin.manifest.id for plugin in loaded}
         for plugin_id, is_on in enabled.items():
             if not is_on:
                 unload_plugin(plugin_id)
+                _purge_plugin_modules(plugin_id)
+        for stale_id in previous:
+            if stale_id not in loaded_ids:
+                _purge_plugin_modules(stale_id)
         return [p for p in loaded if enabled.get(p.manifest.id, True) is not False]
 
     def load_missing(self, *, install_deps: bool = False) -> list[LoadedPlugin]:
