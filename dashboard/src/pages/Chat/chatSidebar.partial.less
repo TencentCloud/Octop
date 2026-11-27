@@ -128,6 +128,20 @@
   flex: 1;
   overflow-y: auto;
   padding: 0 0 12px;
+  /* A history sidebar needs a visible affordance: hide-until-hover overlay
+   * scrollbars leave long histories looking frozen. Persistent thin bar,
+   * styled to match the global scrollbar in layout.css. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--fn-text-quaternary) transparent;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--fn-text-quaternary);
+    border-radius: var(--fn-radius-full);
+  }
 }
 
 .sessionItem {
