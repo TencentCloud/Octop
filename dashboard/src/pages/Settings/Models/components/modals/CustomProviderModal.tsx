@@ -11,6 +11,7 @@ import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
 import { isEmbeddingModel, isRerankModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { inferInputModalities } from "../../wizardModelMeta";
 import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
@@ -155,7 +156,10 @@ export function CustomProviderModal({
           id: m.id,
           name: m.name || m.id,
           enabled: false,
-          input: ["text"],
+          input:
+            embeddingLane || isEmbeddingModel(m)
+              ? ["text"]
+              : inferInputModalities(m.id, m.input),
           thinking: null,
           ...(embeddingLane
             ? { embedding: true as const, task: "embedding" as const }

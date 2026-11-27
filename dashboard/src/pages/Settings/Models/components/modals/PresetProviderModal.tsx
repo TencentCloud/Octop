@@ -9,7 +9,7 @@ import { message } from "@/utils/antdMessage";
 import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import { enrichWizardModel } from "../../wizardModelMeta";
+import { enrichWizardModel, inferInputModalities } from "../../wizardModelMeta";
 import type {
   ProviderModel,
   ProviderPreset,
@@ -194,7 +194,9 @@ export function PresetProviderModal({
             id: m.id,
             name: m.name || m.id,
             enabled: false,
-            input: ["text"],
+            input: embeddingLane
+              ? ["text"]
+              : inferInputModalities(m.id, m.input),
             thinking: null,
             ...(embeddingLane
               ? { embedding: true as const, task: "embedding" as const }

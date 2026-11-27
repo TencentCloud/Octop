@@ -20,14 +20,32 @@ export interface WizardModelDisplayMeta {
   description?: string;
 }
 
-function inferInputModalities(id: string, explicit?: string[]): string[] {
-  const lower = id.toLowerCase();
-  const input = new Set(explicit?.length ? explicit : ["text"]);
-  if (!input.has("text")) input.add("text");
+// Match `vl` as a standalone token (`qwen2.5-vl`, `qwen-vl-max`, `qwen3-vl2`)
+// without matching unrelated words that start with `vl` such as `-vllm`.
+const VISION_VL_RE = /(?:^|[-_/])vl(?=$|[-_/\d])/;
+
+export function inferInputModalities(
+  id: string,
+  explicit?: string[],
+): string[] {
+  const cleaned = (explicit ?? [])
+    .map((m) => m.trim().toLowerCase())
+    .filter(Boolean);
+  if (cleaned.length > 0) {
+    const input = new Set(cleaned);
+    if (!input.has("text")) input.add("text");
+    return [...input];
+  }
+  const lower = id.trim().toLowerCase();
+  const input = new Set<string>(["text"]);
   if (
-    lower.includes("-vl") ||
+    VISION_VL_RE.test(lower) ||
     lower.includes("vision") ||
-    lower.includes("-image")
+    lower.includes("-image") ||
+    lower.includes("gpt-4o") ||
+    lower.includes("gpt-4.1") ||
+    lower.includes("claude-3") ||
+    lower.includes("gemini")
   ) {
     input.add("image");
   }
