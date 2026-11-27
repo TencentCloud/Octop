@@ -11,6 +11,7 @@ import {
 } from "../../../utils/toolMediaBlocks";
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
+import { getModelKind } from "../../Agent/Workspace/utils/modelKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { useChatFilePreview } from "../ChatFilePreviewContext";
 import styles from "../index.module.less";
@@ -22,7 +23,8 @@ function isPreviewable(name: string): boolean {
   return (
     isProbablyText(name) ||
     getMediaKind(name) !== null ||
-    getDocKind(name) !== null
+    getDocKind(name) !== null ||
+    getModelKind(name) !== null
   );
 }
 

@@ -67,6 +67,7 @@ import {
   defaultPreviewMode,
 } from "./FilePreview";
 import { getMediaKind } from "../utils/mediaKind";
+import { getModelKind } from "../utils/modelKind";
 import { getDocKind, isEditableDoc } from "../utils/docKind";
 import { isProbablyText } from "../utils/fileKind";
 import { resolveWorkspaceMoveDest } from "../utils/workspaceMove";
@@ -1090,6 +1091,8 @@ export default function WorkspaceDrawer({
     selected && !selected.is_dir ? getPreviewKind(selected.path) : null;
   const docKind =
     selected && !selected.is_dir ? getDocKind(selected.path) : null;
+  const modelKind =
+    selected && !selected.is_dir ? getModelKind(selected.path) : null;
   const showEditButton =
     selected &&
     !selected.is_dir &&
@@ -1543,6 +1546,7 @@ export default function WorkspaceDrawer({
                     style={
                       (showEditButton && editMode) ||
                       docKind !== null ||
+                      modelKind !== null ||
                       (previewMode && previewNeedsFillLayout(previewKind))
                         ? {
                             overflow: "hidden",

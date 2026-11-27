@@ -1,0 +1,178 @@
+.root {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 42%,
+    color-mix(in srgb, var(--fn-text-primary) 5%, var(--fn-bg-container, #fff))
+      0%,
+    var(--fn-bg-secondary, #f5f5f7) 100%
+  );
+  user-select: none;
+}
+
+.canvasHost {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    outline: none;
+  }
+}
+
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  background: var(--fn-bg-container, #fff);
+}
+
+.metaBadge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-secondary);
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-elevated, var(--fn-bg-container, #fff)) 84%,
+    transparent
+  );
+  backdrop-filter: blur(8px);
+  color: var(--fn-text-secondary);
+  font-size: 11px;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  pointer-events: none;
+}
+
+.toolbar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--fn-border-secondary);
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-elevated, var(--fn-bg-container, #fff)) 88%,
+    transparent
+  );
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--fn-text-primary) 10%, transparent);
+}
+
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.toolbarBtnActive {
+  color: var(--fn-primary, #2563eb);
+  background: color-mix(in srgb, var(--fn-primary, #2563eb) 12%, transparent);
+
+  &:hover {
+    color: var(--fn-primary, #2563eb);
+    background: color-mix(in srgb, var(--fn-primary, #2563eb) 18%, transparent);
+  }
+}
+
+.hintBadge {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  z-index: 2;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-elevated, var(--fn-bg-container, #fff)) 76%,
+    transparent
+  );
+  color: var(--fn-text-tertiary);
+  font-size: 11px;
+  pointer-events: none;
+
+  @media (max-width: 520px) {
+    display: none;
+  }
+}
+
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  background: var(--fn-bg-container, #fff);
+}
+
+.errorState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--fn-text-secondary);
+}
+
+.errorIcon {
+  color: var(--fn-text-tertiary);
+}
+
+.errorText {
+  margin: 0;
+  max-width: 340px;
+  font-size: 13px;
+}
+
+.errorActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

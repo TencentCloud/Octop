@@ -26,6 +26,7 @@ import {
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
+import { getModelKind } from "../../Agent/Workspace/utils/modelKind";
 import { storageBrowseError } from "./storageProbeMessage";
 import type { StorageBackendRow } from "./useStorageBackends";
 import styles from "./storage.module.less";
@@ -67,7 +68,10 @@ function storageFileUrl(
 
 function canPreviewPath(path: string): boolean {
   return Boolean(
-    getMediaKind(path) || getDocKind(path) || isProbablyText(path),
+    getMediaKind(path) ||
+      getDocKind(path) ||
+      getModelKind(path) ||
+      isProbablyText(path),
   );
 }
 
@@ -271,7 +275,7 @@ export function StorageBrowseDrawer({
     abortRef.current = abort;
     setPreviewPath(path);
     setContent("");
-    if (getMediaKind(path) || getDocKind(path)) return;
+    if (getMediaKind(path) || getDocKind(path) || getModelKind(path)) return;
     setFileLoading(true);
     try {
       const r = await request<{ content: string }>(
@@ -298,6 +302,7 @@ export function StorageBrowseDrawer({
   const fillPreview =
     previewPath != null &&
     (getDocKind(previewPath) != null ||
+      getModelKind(previewPath) != null ||
       previewNeedsFillLayout(getPreviewKind(previewPath)));
 
   return (
