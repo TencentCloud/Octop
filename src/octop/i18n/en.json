@@ -836,7 +836,7 @@
     "model_call_failed_detail": "The model call failed: {detail}",
     "model_retry_prompt": "The model API request failed. Do not pretend the task succeeded.\n\nWhat happened: {guidance}\n\nExplain this to the user in their language and suggest the next step. Do not retry the same failing request unchanged.\n\nTechnical detail: {detail}",
     "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data).",
-    "database_corrupt": "A local SQLite database file appears corrupted (database disk image is malformed). This is not a model configuration issue. Stop Octop and run `octop db doctor` to locate the damaged file, then run `octop db recover` to repair it (see logs/octop.log for details)."
+    "database_corrupt": "A local SQLite database file appears corrupted (database disk image is malformed). This is not a model configuration issue. Stop Octop and run `octop doctor db` to locate the damaged file, then run `octop doctor db --fix` to repair it (see logs/octop.log for details)."
   },
   "attachment": {
     "header": "[Attachment] {filename}",
