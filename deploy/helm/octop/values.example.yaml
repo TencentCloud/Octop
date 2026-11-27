@@ -1,6 +1,6 @@
 # Install sample. Copy it, change the hostname, image, and resources, then:
 #   helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-#     --version 1.0.3-b7 -n octop -f my-values.yaml
+#     --version 1.0.3-b8 -n octop -f my-values.yaml
 #
 # Do not put passwords in this file. Create Secrets before install. See secrets.example.yaml.
 #   octop-admin  username / password     console login; used only on first init
@@ -15,7 +15,7 @@ image:
   # Empty uses the chart appVersion. Set a tag that exists in the registry.
   # The lite image has no virtual desktop, local embeddings, or OCR. Those need
   # a <version>-full tag and shm below.
-  tag: "1.0.3b7"
+  tag: "1.0.3b8"
   pullPolicy: IfNotPresent
 
 # The full image needs about 1Gi of /dev/shm. Leave this false for the lite image.

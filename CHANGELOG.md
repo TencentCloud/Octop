@@ -1,40 +1,33 @@
 # Changelog
 
-## Unreleased
-
-- 修复插件安装失败时错误正文泄漏到界面：普通请求、上传及安装 SSE 统一保留结构化错误与翻译，非 JSON 响应仅展示 HTTP 状态与请求编号，错误读取限制为 16 KiB / 2 秒。
-- 插件下载、解压和依赖安装移至后台，注册和运行时刷新保留在事件循环；加入下载超时、大小及总时间预算，同插件并发冲突和取消保护，更新失败恢复旧文件与注册，禁用插件更新后保持禁用。
-
-
 本文件记录项目的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
 
+## [1.0.3b8] - 2026-11-27
+
 ### 新增
-- 新增 `octop doctor db` 与 `octop doctor db --fix` 离线诊断修复命令，可扫描 `OCTOP_HOME` 下所有 SQLite 库执行完整性检查，并在备份后通过 `sqlite3 .recover` / Python 回退或重置修复损坏库（#2998）。
-- 可观测设置新增腾讯云 CLS（AgentObs）接入：支持填写腾讯云 SecretId / SecretKey 通过 Langfuse SDK（OTLP/HTTP Basic Auth）直接上报 Trace，支持自动调用 `CreateAgentApplication` 创建/复用 CLS 应用获取 Topic ID，也支持拉取或直接填写已有应用的 Topic ID，并提供内网接入点、内容脱敏及连通性校验。
-- 知识库设置新增「分块与检索」标签页，可配置分块大小、分块重叠、默认检索条数和上下文字符预算。
-- 用户管理支持创建限次邀请链接。链接在注册满员后自动停用，管理员也可以提前停用并查看已注册的用户。邀请管理 API 移除了 `used_at`、`used_by_user_id` 和 `revoked_at`，可通过注册记录和邀请状态查看使用情况。
-- 自托管可用环境变量放行内网出站目标：`OCTOP_SSRF_ALLOWLIST`（主机名、`.后缀` 或 CIDR）让语音服务、OAuth MCP 发现与令牌请求等指向内网服务，`OCTOP_SSRF_ALLOW_HTTP` 允许这些目标走 http；仍做 DNS 解析并固定连接 IP 防重绑定，不配置时行为不变（#2016）
-- 定时任务新增脚本类型，可执行 Python、Bash 或 PowerShell。脚本可以写在任务里，也可以选择专家工作区中的脚本文件；有可执行沙箱时在沙箱里跑，否则在服务器上跑，标准输出会推进会话。
-- 智能体定时任务可以打开「放通所有」。只作用于这一次运行，不改变对话里已保存的审批设置。原生专家放通除提问外的工具；托管专家使用无人值守模式。
-- 对话页新增独立 Git 面板：查看工作区改动与单文件 diff、暂存/取消暂存/丢弃、用当前模型生成提交信息、提交或提交并推送，以及带 merge 图、提交者与 OpenPGP 签名状态的提交历史。Git 在宿主机或 Docker 工作区内就地执行，并支持自定义 git 路径。
-- 每轮对话记录本轮写入过的文件；回合卡片可以打开本轮 diff，并在文件未被后续改动时撤销本轮写入。
-- 备份与恢复支持以「存储管理」中的 WebDAV / 腾讯云 COS / S3 后端作为备份目标；占用中的备份目标不可删除或改类型。远端路径由存储后端高级配置里的 `base_dir`（S3/COS 亦可用 `prefix`）决定：归档文件直接落在该目录下，不会再自动拼接固定子路径，也不会自动创建目录——请先在远端建好 `base_dir` 再选用。列表、创建、恢复、自动备份与保留清理都只作用于所选后端的该 `base_dir`。多副本部署时，每台 Octop 应使用各自的 `base_dir`（或不同后端），避免共用同一目录导致互写、互删；单机用一个 `base_dir` 即可。选远端时本地备份目录仅作缓存。
-- 会话可以生成只读分享链接。打开后能看到对话、思考和工具调用；用 localhost 或 127.0.0.1 打开时不提供分享
-- ACP 协作新增内置 Qwen Code Runner（`qwen --acp`），含主机探测、安装脚本与托管专家会话模式
-- 新增内置 Gitea 连接器：填写自建实例地址与个人访问令牌（按用户加密保存）后，智能体可浏览仓库、查询 Issue 与评论、查看 PR、读取文件并发表评论。
+- 新增 Slack 与双模式 WhatsApp 渠道。
+- 新增 CubeSandbox 专家沙箱，以及团队技能挂载、头像共享和工作区路径支持。
+- 新增腾讯云 CLS（AgentObs）可观测接入。
+- 新增 `octop doctor db` 与 `octop doctor db --fix`，用于诊断和修复 SQLite 数据库。
+- 新增 WebDAV、腾讯云 COS、S3 远程备份目标。
+- 新增对话只读分享、Git 面板与逐轮文件变更记录。
+- 新增 Qwen Code ACP Runner，以及 GitHub、Gitea 连接器。
+- 完善 Codex 与共享记忆服务的终端接入、模型配置和状态管理。
 
 ### 修复
-- 修复 SQLite 损坏时的报错与恢复闭环：`format_stream_error` 不再将 `database disk image is malformed` 误显示为「模型调用失败」；`memory/storage/restore` 支持恢复已损坏的 `memory.sqlite` 并识别自动裁剪备份 `memory.sqlite.pre-prune.bak`；为控制面与知识库 SQLite 补齐 `busy_timeout` / WAL 及关机 checkpoint，并延长飞牛原生 FPK 停服等待时间且在 btrfs 首次建目录时尝试 `chattr +C`（#2998）。
-- 删除 Dashboard 默认会话后，绑定该会话的定时任务会在下次运行时自动重建会话。
-- 修复模型把一个 emoji 拆到多个流式分片时，重新打开对话可能看不到历史的问题。
-- Dashboard 对话报错：以 HTTP 429 / 403 返回的余额不足与欠费（OpenAI `insufficient_quota`、智谱 1113、Moonshot、Anthropic、硅基流动、火山方舟）不再提示「被限流，请稍后重试」，改为提示充值；DashScope 借用额度文案的 TPM/RPM 限流仍按限流提示
-- 向量模型页可识别对话提供商中启用的 BGE 等向量模型。知识库的在线 Embedding 和 Rerank 分别列出可用模型，并复用已有提供商配置。
-- 个性化页只展示和编辑当前用户自己的专家：新账号未创建专家时不再显示其他用户共享专家的技能、工具与记忆，改为引导创建专家（Fixes #1097）
-- 修复 PostgreSQL 控制面凭证在配置保存重载时被重复编码的问题，并保留用户名和密码中的空格。
+- 修复 SQLite 损坏恢复、备份恢复及 PostgreSQL 清理相关问题。
+- 修复工作区、供应商密钥、设置和会话访问的权限隔离问题。
+- 修复插件安装、下载、覆盖更新失败时的恢复与错误提示。
+- 修复对话卡顿、历史错序、流式 emoji 丢失及定时任务会话恢复问题。
+- 修复知识库 Embedding/Rerank 模型复用和个人专家数据隔离问题。
+
+### 变更
+- 升级 `octop-harness` 至 1.0.13，升级 `octop-memory` 至 1.0.7。
+- 支持通过 `octop.extensions` 为 Octop 安装扩展包。
 
 ## [1.0.3b7] - 2026-11-17
 

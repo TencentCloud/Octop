@@ -12,11 +12,11 @@
 
 ## 从哪里安装
 
-安装用 GHCR 上的 chart，不必克隆仓库。地址和镜像在同一个仓库，没有单独的 HTTP Helm 仓库。打 `v*` 标签时流水线推包。`appVersion` 是镜像 tag，例如 `1.0.3b7`。Helm 的 chart `version` 必须是 SemVer，所以 `1.0.3b7` 会发成 `1.0.3-b7`，`1.0.3` 保持 `1.0.3`。发布包里的 `appVersion` 已经是镜像 tag，安装时不用再写 `image.tag`。
+安装用 GHCR 上的 chart，不必克隆仓库。地址和镜像在同一个仓库，没有单独的 HTTP Helm 仓库。打 `v*` 标签时流水线推包。`appVersion` 是镜像 tag，例如 `1.0.3b8`。Helm 的 chart `version` 必须是 SemVer，所以 `1.0.3b8` 会发成 `1.0.3-b8`，`1.0.3` 保持 `1.0.3`。发布包里的 `appVersion` 已经是镜像 tag，安装时不用再写 `image.tag`。
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -25,11 +25,11 @@ helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 ## 要准备什么
 
-Chart 不保存口令，也不会在 values 里生成 Secret。线上包的默认值用 `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b7` 查看。仓库里的 `values.example.yaml` 把同一批参数写成带注释的样例，`secrets.example.yaml` 是口令样例。复制后改域名和镜像，占位符换成真实口令，不要把填好的口令文件提交进仓库。
+Chart 不保存口令，也不会在 values 里生成 Secret。线上包的默认值用 `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b8` 查看。仓库里的 `values.example.yaml` 把同一批参数写成带注释的样例，`secrets.example.yaml` 是口令样例。复制后改域名和镜像，占位符换成真实口令，不要把填好的口令文件提交进仓库。
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   -f my-values.yaml
 ```
@@ -95,7 +95,7 @@ kubectl -n octop create secret tls octop-tls \
   --cert=fullchain.pem --key=privkey.pem
 
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -104,7 +104,7 @@ helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.enabled=false
 
@@ -138,7 +138,7 @@ curl -fsS http://127.0.0.1:8088/api/health
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --reuse-values \
   --set ingress.host=octop.example.com
@@ -150,7 +150,7 @@ TLS Secret 里的域名要和这里一致。如果关掉 TLS，把注解 `nginx.
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --reuse-values \
   --set replicaCount=3
@@ -196,7 +196,7 @@ helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set postgresql.enabled=false \
   --set database.host=pg.example.com \
