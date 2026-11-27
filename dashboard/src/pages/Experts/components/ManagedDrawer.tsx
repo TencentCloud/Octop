@@ -477,6 +477,18 @@ export default function ManagedDrawer({
               }}
             />
           </Form.Item>
+          {sharingAvailable ? (
+            <ResourceVisibilityFormItem
+              allowOwner
+              visibility={visibility}
+              groupIds={groupIds}
+              tooltip={t("experts.visibilityHint")}
+              onChange={(next) => {
+                setVisibility(next.visibility);
+                setGroupIds(next.visibility === "groups" ? next.groupIds : []);
+              }}
+            />
+          ) : null}
         </ExpertDrawerSection>
 
         {/* ── Skills & resources (the runner powers a managed expert) ── */}
@@ -573,20 +585,6 @@ export default function ManagedDrawer({
                 />
               )}
             </Form.Item>
-            {sharingAvailable ? (
-              <ResourceVisibilityFormItem
-                allowOwner
-                visibility={visibility}
-                groupIds={groupIds}
-                tooltip={t("experts.visibilityHint")}
-                onChange={(next) => {
-                  setVisibility(next.visibility);
-                  setGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-            ) : null}
             <AgentTrajectoryField />
             <FileEditModal
               open={editPath !== null}

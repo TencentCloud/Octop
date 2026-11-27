@@ -170,12 +170,15 @@ export function FormItemForField({
   disabled = false,
   editing = false,
   secretKept = false,
+  helpInTooltip = false,
 }: {
   field: ChannelField;
   editing?: boolean;
   disabled?: boolean;
   /** Stored secret stays on the server; an empty field means keep it. */
   secretKept?: boolean;
+  /** Slack and WhatsApp show field help on the label question mark. */
+  helpInTooltip?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
@@ -183,20 +186,25 @@ export function FormItemForField({
     : field.label;
   const isBuiltinHelp = Boolean(field.helpKey?.startsWith("channels."));
   const help = field.helpKey ? t(field.helpKey) : undefined;
-  const extra = isBuiltinHelp ? help : undefined;
-  const fieldLabel =
-    help && !isBuiltinHelp ? (
-      <span>
-        {label}{" "}
-        <Tooltip title={help}>
-          <span role="img" aria-label={`${label}: ?`} tabIndex={0}>
-            <CircleHelp size={14} style={{ verticalAlign: "middle" }} />
-          </span>
-        </Tooltip>
-      </span>
-    ) : (
-      label
-    );
+  const helpInQuestion = Boolean(help) && (helpInTooltip || !isBuiltinHelp);
+  const extra = help && !helpInQuestion ? help : undefined;
+  const fieldLabel = helpInQuestion ? (
+    <span>
+      {label}{" "}
+      <Tooltip title={help}>
+        <span
+          role="img"
+          aria-label={`${label}: ?`}
+          tabIndex={0}
+          className={styles.fieldHelp}
+        >
+          <CircleHelp size={14} />
+        </span>
+      </Tooltip>
+    </span>
+  ) : (
+    label
+  );
   const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
   if (field.type === "select") {
     const optionPrefix = field.optionLabelPrefix ?? "channels.telegram_option_";
@@ -1877,6 +1885,7 @@ export function ChannelDrawer({
     <Drawer
       width={520}
       placement="right"
+      className={styles.channelDrawer}
       title={
         <div className={styles.drawerTitle}>
           {CHANNEL_ICONS[selectedKind] && (
@@ -2066,6 +2075,9 @@ export function ChannelDrawer({
                     key={f.name}
                     field={f}
                     editing={isEdit}
+                    helpInTooltip={
+                      selectedKind === "slack" || selectedKind === "whatsapp"
+                    }
                     secretKept={secretsSet.includes(f.name)}
                     disabled={
                       (selectedKind === "discord" &&

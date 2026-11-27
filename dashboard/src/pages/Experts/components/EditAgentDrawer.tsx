@@ -888,25 +888,18 @@ function EditAgentDrawerBody({
     );
 
   const chatReady = isAgentChatReady(agent.state);
-  const advancedFields = (
-    <>
-      {sharingAvailable ? (
-        <ResourceVisibilityFormItem
-          allowOwner
-          visibility={expertVisibility}
-          groupIds={expertGroupIds}
-          tooltip={t("experts.visibilityHint")}
-          onChange={(next) => {
-            setExpertVisibility(next.visibility);
-            setExpertGroupIds(
-              next.visibility === "groups" ? next.groupIds : [],
-            );
-          }}
-        />
-      ) : null}
-      <AgentTrajectoryField />
-    </>
-  );
+  const expertVisibilityField = sharingAvailable ? (
+    <ResourceVisibilityFormItem
+      allowOwner
+      visibility={expertVisibility}
+      groupIds={expertGroupIds}
+      tooltip={t("experts.visibilityHint")}
+      onChange={(next) => {
+        setExpertVisibility(next.visibility);
+        setExpertGroupIds(next.visibility === "groups" ? next.groupIds : []);
+      }}
+    />
+  ) : null;
 
   return (
     <>
@@ -1079,6 +1072,7 @@ function EditAgentDrawerBody({
                   </Form.Item>
                 </>
               )}
+              {expertVisibilityField}
             </ExpertDrawerSection>
 
             {/* ── Skills & resources ───────────────────────────── */}
@@ -1405,7 +1399,7 @@ function EditAgentDrawerBody({
                     </Form.Item>
                   </>
                 ) : null}
-                {advancedFields}
+                <AgentTrajectoryField />
                 {agent.kind === "managed" ? (
                   <Form.Item
                     name="workspace_dir"

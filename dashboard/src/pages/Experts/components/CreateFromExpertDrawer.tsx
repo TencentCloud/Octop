@@ -932,6 +932,20 @@ export default function CreateFromExpertDrawer({
               }
             />
           </Form.Item>
+          {sharingAvailable ? (
+            <ResourceVisibilityFormItem
+              allowOwner
+              visibility={expertVisibility}
+              groupIds={expertGroupIds}
+              tooltip={t("experts.visibilityHint")}
+              onChange={(next) => {
+                setExpertVisibility(next.visibility);
+                setExpertGroupIds(
+                  next.visibility === "groups" ? next.groupIds : [],
+                );
+              }}
+            />
+          ) : null}
         </ExpertDrawerSection>
 
         {/* ── Skills & resources ───────────────────────────── */}
@@ -1167,20 +1181,6 @@ export default function CreateFromExpertDrawer({
                 ))
               )}
             </Form.Item>
-            {sharingAvailable ? (
-              <ResourceVisibilityFormItem
-                allowOwner
-                visibility={expertVisibility}
-                groupIds={expertGroupIds}
-                tooltip={t("experts.visibilityHint")}
-                onChange={(next) => {
-                  setExpertVisibility(next.visibility);
-                  setExpertGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-            ) : null}
             <AgentTrajectoryField />
             <SkillSourcePickerModal
               open={skillPickerOpen}
