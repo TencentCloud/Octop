@@ -306,6 +306,24 @@ class SsoRepo:
                 ),
             )
 
+    def claim_once(self, *, state: str, provider_id: int, expires_at: int) -> bool:
+        """原子插入一次性占位行；state 已存在（唯一约束冲突，即重放）时返回 False。"""
+        try:
+            self.create_login_state(
+                state=state,
+                provider_id=provider_id,
+                nonce="",
+                code_verifier="",
+                redirect_after="",
+                expires_at=expires_at,
+                user_id=None,
+            )
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                return False
+            raise
+        return True
+
     def take_login_state(self, state: str) -> SsoLoginStateRow | None:
         """Atomically claim a login state for one callback attempt."""
         with self._db.transaction() as conn:
@@ -317,17 +335,19 @@ class SsoRepo:
             ).fetchone()
         return SsoLoginStateRow.from_row(row) if row else None
 
-    def attach_login_code(self, state: str, login_code: str, user_id: int, expires_at: int) -> None:
-        """Attach a one-time login code after a claimed callback succeeds.
+    def attach_login_code(self, state: str, login_code: str, user_id: int, expires_at: int) -> bool:
+        """把一次性登录码挂到已存在的登录态行上。
 
-        Clears ``consumed_at`` so ``consume_login_code`` can finalize the session.
+        清除 ``consumed_at``，以便 ``consume_login_code`` 完成会话交换。
+        返回是否实际更新到行；0 行时调用方必须关闭失败，不能下发未落库的码。
         """
         with self._db.transaction() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 "UPDATE sso_login_states SET login_code = ?, user_id = ?, expires_at = ?, "
                 "consumed_at = NULL WHERE state = ? AND login_code IS NULL",
                 (login_code, user_id, expires_at, state),
             )
+        return int(cursor.rowcount or 0) > 0
 
     def consume_login_code(self, login_code: str) -> dict[str, int] | None:
         with self._db.transaction() as conn:
