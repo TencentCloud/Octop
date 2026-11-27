@@ -145,7 +145,7 @@ async def test_peer_cannot_mutate_shared_agent_workspace_or_skills(env) -> None:
     assert response.status_code == 200, response.text
 
 
-async def test_peer_can_read_shared_agent_inbound_attachment(env) -> None:
+async def test_peer_cannot_access_shared_agent_workspace_files(env) -> None:
     client, owner_auth, peer_auth, agent_id = await _shared_agent(env)
     response = await client.patch(
         f"/api/agents/{agent_id}",
@@ -167,16 +167,36 @@ async def test_peer_can_read_shared_agent_inbound_attachment(env) -> None:
         headers=peer_auth,
         params={"path": "inbound/shared-attachment.txt"},
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["content"] == "shared attachment"
+    assert response.status_code == 403
 
     response = await client.get(
         f"/api/agents/{agent_id}/workspace/download",
         headers=peer_auth,
         params={"path": "inbound/shared-attachment.txt"},
     )
-    assert response.status_code == 200, response.text
-    assert response.content == b"shared attachment"
+    assert response.status_code == 403
+
+    response = await client.get(
+        f"/api/agents/{agent_id}/workspace/doc",
+        headers=peer_auth,
+        params={"path": "notes.docx"},
+    )
+    assert response.status_code == 403
+
+    response = await client.put(
+        f"/api/agents/{agent_id}/workspace/doc",
+        headers=peer_auth,
+        params={"path": "notes.docx"},
+        json={"content": "# updated"},
+    )
+    assert response.status_code == 403
+
+    response = await client.get(
+        f"/api/agents/{agent_id}/media/preview",
+        headers=peer_auth,
+        params={"source": "inbound/shared-attachment.txt"},
+    )
+    assert response.status_code == 403
 
 
 async def test_unshare_hides_agent_from_peer(env) -> None:

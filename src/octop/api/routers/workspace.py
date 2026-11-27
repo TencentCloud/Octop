@@ -191,7 +191,9 @@ async def read_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
-    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     _guard_workspace_read(io_path, ws.workspace_dir)
     content = await ws.aread_text(io_path)
@@ -374,7 +376,9 @@ async def download_file(
     OS temp, and tool outputs outside the control-plane home (for example Desktop).
     The control-plane home and system roots are denied.
     """
-    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     _guard_workspace_read(io_path, ws.workspace_dir)
 
@@ -404,7 +408,9 @@ async def read_doc(
 ) -> dict[str, Any]:
     """Read an editable document (e.g. ``.docx``) as Markdown for online editing."""
     converter = _ensure_editable_doc(path)
-    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     _guard_workspace_read(io_path, ws.workspace_dir)
     try:
@@ -437,7 +443,9 @@ async def write_doc(
     _ = from_workspace  # Mutations always use workspace-relative paths.
     rel = _assert_workspace_mutable(path)
     converter = _ensure_editable_doc(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
     try:
         data = converter.from_markdown(body.content)
     except Exception as exc:
@@ -468,7 +476,9 @@ async def preview_media(
     """Stream an image or video inline for dashboard tool-result previews."""
     path_agent = _agent_id_from_media_source(source)
     effective_agent = path_agent or agent_id
-    ws = await require_running_workspace(effective_agent, user=user, as_user=as_user, server=server)
+    ws = await require_running_workspace(
+        effective_agent, user=user, as_user=as_user, server=server, owner_only=True
+    )
     payload = await resolve_preview_payload(
         source=source,
         workspace=ws,
