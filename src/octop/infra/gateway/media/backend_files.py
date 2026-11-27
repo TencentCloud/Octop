@@ -52,44 +52,56 @@ def _contains_denied_browser_home(text: str) -> bool:
     return any(segment in lowered for segment in _DENIED_BROWSER_HOME_SEGMENTS)
 
 
-def is_allowed_host_temp_path(resolved: Path) -> bool:
-    """True when *resolved* is a regular file under an OS temp directory."""
-    try:
-        if not resolved.is_file():
-            return False
-    except OSError:
-        return False
+def _dir_prefix(path: str) -> str:
+    return path if path.endswith(os.sep) else path + os.sep
 
+
+def _temp_root_prefixes() -> tuple[str, ...]:
+    roots: list[str] = []
     if os.name == "nt":
-        candidates: list[Path] = []
         for key in ("TEMP", "TMP"):
             value = os.environ.get(key, "").strip()
             if value:
-                candidates.append(Path(value).resolve())
+                with contextlib.suppress(OSError, ValueError):
+                    roots.append(os.path.realpath(value))
         local_app = os.environ.get("LOCALAPPDATA", "").strip()
         if local_app:
-            candidates.append((Path(local_app) / "Temp").resolve())
-        with contextlib.suppress(OSError):
-            candidates.append(Path(tempfile.gettempdir()).resolve())
-        for root in candidates:
-            try:
-                resolved.relative_to(root)
-                return True
-            except ValueError:
-                continue
-        return False
-
-    candidates = []
-    with contextlib.suppress(OSError):
-        candidates.append(Path(tempfile.gettempdir()).resolve())
-    for root in candidates:
-        try:
-            resolved.relative_to(root)
-            return True
-        except ValueError:
+            with contextlib.suppress(OSError, ValueError):
+                roots.append(os.path.realpath(os.path.join(local_app, "Temp")))
+        with contextlib.suppress(OSError, ValueError):
+            roots.append(os.path.realpath(tempfile.gettempdir()))
+    else:
+        with contextlib.suppress(OSError, ValueError):
+            roots.append(os.path.realpath(tempfile.gettempdir()))
+        roots.extend(("/tmp", "/private/tmp"))
+    seen: list[str] = []
+    for root in roots:
+        if not root:
             continue
-    norm = str(resolved).replace("\\", "/")
-    return norm.startswith(("/tmp/", "/private/tmp/"))
+        prefix = _dir_prefix(root)
+        if prefix not in seen:
+            seen.append(prefix)
+    return tuple(seen)
+
+
+def is_allowed_host_temp_path(resolved: Path) -> bool:
+    """True when *resolved* is a regular file under an OS temp directory."""
+    raw = os.fspath(resolved)
+    if not raw or "\0" in raw:
+        return False
+    try:
+        target = os.path.realpath(raw)
+    except (OSError, ValueError):
+        return False
+    prefixes = _temp_root_prefixes()
+    if not prefixes:
+        return False
+    if target.startswith(prefixes):
+        try:
+            return os.path.isfile(target)
+        except OSError:
+            return False
+    return False
 
 
 def file_url_to_abs_path(file_url: str) -> str:
@@ -225,27 +237,32 @@ def is_previewable_mime(mime: str) -> bool:
     return is_preview_media_type(mime)
 
 
-def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:
+def _resolve_allowed_abs_path(abs_path: str, *, workspace: Path) -> str | None:
+    if not abs_path or "\0" in abs_path:
+        return None
     try:
-        resolved = Path(abs_path).resolve()
+        resolved = os.path.realpath(abs_path)
+        ws_real = os.path.realpath(os.fspath(workspace))
+        shots_real = os.path.realpath(os.fspath(legacy_harness_screenshots_dir()))
     except (OSError, ValueError):
-        return False
-    if is_allowed_host_temp_path(resolved):
-        return True
-    ws = workspace.resolve()
-    # Any file already inside the agent workspace is previewable (same rule as
-    # host download allowlist). Restricting to outbound/inbound forced a copy
-    # into outbound/ while preview still pointed at the original path.
-    try:
-        resolved.relative_to(ws)
-        return True
-    except ValueError:
-        pass
-    try:
-        resolved.relative_to(legacy_harness_screenshots_dir().resolve())
-        return True
-    except ValueError:
-        return False
+        return None
+    temp_prefixes = _temp_root_prefixes()
+    if temp_prefixes and resolved.startswith(temp_prefixes):
+        try:
+            if os.path.isfile(resolved):
+                return resolved
+        except OSError:
+            pass
+    # Any file already inside the agent workspace (or legacy screenshots dir)
+    # is previewable without duplicating into outbound/.
+    allowed_prefixes = tuple(_dir_prefix(root) for root in (ws_real, shots_real) if root)
+    if allowed_prefixes and resolved.startswith(allowed_prefixes):
+        return resolved
+    return None
+
+
+def _abs_path_allowed(abs_path: str, *, workspace: Path) -> bool:
+    return _resolve_allowed_abs_path(abs_path, workspace=workspace) is not None
 
 
 _DENIED_HOST_DOWNLOAD_PREFIXES = (
@@ -278,16 +295,16 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     (database, secrets, other agents).
     """
     raw = path.strip()
-    if not raw:
+    if not raw or "\0" in raw:
         return False
     if raw.startswith("file://"):
         raw = file_url_to_abs_path(raw)
-        if not raw:
+        if not raw or "\0" in raw:
             return False
 
     raw_norm = raw.replace("\\", "/")
     # POSIX-style absolute paths (leading /, not a drive letter) — deny system
-    # roots on every platform; Path.resolve() on Windows maps /etc → C:\etc.
+    # roots on every platform; os.path.realpath() on Windows maps /etc → C:\etc.
     if (
         raw_norm.startswith("/")
         and not (len(raw_norm) >= 3 and raw_norm[2] == ":")
@@ -296,21 +313,23 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
         return False
 
     try:
-        resolved = Path(raw).resolve()
+        resolved_s = os.path.realpath(raw)
     except (OSError, ValueError):
         return False
+    resolved = Path(resolved_s)
 
-    norm = str(resolved).replace("\\", "/").lower()
+    norm = resolved_s.replace("\\", "/").lower()
     if _contains_denied_browser_home(norm):
         return False
     if resolved == Path(resolved.anchor):
         return False
 
-    ws = workspace.resolve()
+    ws = Path(os.path.realpath(os.fspath(workspace)))
     if _is_under(resolved, ws):
         return True
     try:
-        if _is_under(resolved, PathLayout.from_env().root.resolve()):
+        octop_root = Path(os.path.realpath(os.fspath(PathLayout.from_env().root)))
+        if _is_under(resolved, octop_root):
             return False
     except OSError:
         return False
@@ -356,12 +375,20 @@ async def _download_via_workspace(workspace: BackendWorkspace, path: str) -> byt
         return None
 
 
-async def _read_host_file_bytes(abs_path: str) -> bytes | None:
+def _read_bytes_file(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+async def _read_host_file_bytes(abs_path: str, *, workspace: Path) -> bytes | None:
     """Best-effort host read when BackendWorkspace cannot open a Windows abs path."""
+    resolved = _resolve_allowed_abs_path(abs_path, workspace=workspace)
+    if resolved is None:
+        return None
     try:
-        return await asyncio.to_thread(Path(abs_path).read_bytes)
+        return await asyncio.to_thread(_read_bytes_file, resolved)
     except OSError as exc:
-        logger.warning("host file read failed for %s: %s", abs_path, exc)
+        logger.warning("host file read failed for %s: %s", resolved, exc)
         return None
 
 
@@ -396,7 +423,7 @@ async def resolve_preview_payload(
             return None
         data = await _download_via_workspace(workspace, path)
         if data is None:
-            data = await _read_host_file_bytes(path)
+            data = await _read_host_file_bytes(path, workspace=workspace.workspace_dir)
         used = path
     else:
         data = await _download_via_workspace(workspace, path)
@@ -441,7 +468,7 @@ async def read_file_url_bytes(
         return await _download_via_workspace(workspace, imported)
 
     if _is_host_absolute(path) and _abs_path_allowed(path, workspace=workspace.workspace_dir):
-        return await _read_host_file_bytes(path)
+        return await _read_host_file_bytes(path, workspace=workspace.workspace_dir)
     return None
 
 
@@ -475,16 +502,17 @@ async def ensure_workspace_media_path(
 
     # Already under this agent workspace (e.g. root-level screenshot.png) —
     # reuse the relative key; do not duplicate into outbound/.
-    if _is_host_absolute(abs_path):
+    if _is_host_absolute(abs_path) and "\0" not in abs_path:
         try:
-            rel = Path(abs_path).resolve().relative_to(workspace.workspace_dir.resolve())
+            ws_real = Path(os.path.realpath(os.fspath(workspace.workspace_dir)))
+            rel = Path(os.path.realpath(abs_path)).relative_to(ws_real)
             rel_s = rel.as_posix()
             data = await _download_via_workspace(workspace, rel_s)
             if data is None:
                 data = await _download_via_workspace(workspace, abs_path)
             if data is not None:
                 return rel_s
-        except ValueError:
+        except (OSError, ValueError):
             pass
 
     if not _is_host_absolute(abs_path):
@@ -498,7 +526,7 @@ async def ensure_workspace_media_path(
     if data is None:
         # Windows drive-letter paths raise PermissionError inside BackendWorkspace
         # before the local backend can open them; read the host file directly.
-        data = await _read_host_file_bytes(abs_path)
+        data = await _read_host_file_bytes(abs_path, workspace=workspace.workspace_dir)
     if data is None:
         return None
     await workspace.aupload_bytes(dest, data)

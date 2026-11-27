@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from octop_harness.acp.models import ACPConfig, default_acp_runners
 
 from octop.infra.db.repos.agents import AgentRepo, AgentRow
 from octop.infra.db.repos.settings import SettingsRepo
+from octop.infra.utils.host_dirs import assert_safe_host_file
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +26,18 @@ def host_runner_argv(command: str, args: list[str], env: dict[str, str]) -> tupl
     shim = shutil.which(command, path=env.get("PATH"))
     if shim and Path(shim).suffix.lower() == ".cmd":
         root = Path(shim).parent
-        script = root / "node_modules" / "npm" / "bin" / "npx-cli.js"
+        candidate = root / "node_modules" / "npm" / "bin" / "npx-cli.js"
         node = shutil.which("node", path=env.get("PATH"))
-        if node and script.is_file():
-            return node, [str(script), *args]
+        if node:
+            try:
+                script = assert_safe_host_file(
+                    os.fspath(candidate),
+                    restrict_to_root=os.fspath(root),
+                )
+            except ValueError:
+                script = None
+            if script:
+                return node, [script, *args]
     return command, args
 
 
