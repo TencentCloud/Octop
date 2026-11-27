@@ -21,6 +21,10 @@ from octop.infra.agents.settings.runtime_limits import (
 class AgentCompactionSettings(BaseModel):
     """Automatic context compaction for one expert. Omitted fields keep the harness default."""
 
+    model: str | None = Field(
+        default=None,
+        description="Manual /compact model: provider/model, session, or null to inherit.",
+    )
     enabled: bool | None = Field(
         default=None,
         description="Turn automatic compaction off. Omit to leave it on.",
@@ -132,12 +136,21 @@ class AgentRuntimeFields(BaseModel):
         return self
 
 
+def validate_compaction_override(model: Any, registry: Any, user_id: int) -> None:
+    settings = model.compaction
+    if settings is not None and settings.model not in (None, "session"):
+        registry.validate_compaction_model(user_id, settings.model)
+
+
 def persisted_agent_settings(
     model: BaseModel,
     *,
     exclude_unset: bool,
+    registry: Any,
+    user_id: int,
 ) -> dict[str, Any]:
     """Runtime fields plus compaction for create paths that share one dict."""
+    validate_compaction_override(model, registry, user_id)
     dumped = model.model_dump(exclude_unset=exclude_unset)
     updates = {key: dumped[key] for key in AGENT_RUNTIME_CONFIG_KEYS if key in dumped}
     if COMPACTION_CONFIG_KEY in dumped:

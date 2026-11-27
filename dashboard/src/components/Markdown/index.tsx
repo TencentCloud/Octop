@@ -11,6 +11,7 @@ import {
   type TableHTMLAttributes,
   type ImgHTMLAttributes,
 } from "react";
+import { publicUrl } from "../../utils/publicUrl";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
@@ -414,6 +415,25 @@ const Markdown = memo(function Markdown({
             children?: ReactNode;
             href?: string;
           } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+            if (href === "#compact-session-model") {
+              return (
+                <a
+                  href={href}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    window.dispatchEvent(new Event("octop:open-model-picker"));
+                  }}
+                >
+                  {children}
+                </a>
+              );
+            }
+            if (
+              href === "/admin/models?tab=chat#compact-model" ||
+              href?.startsWith("/experts?compactModel=")
+            ) {
+              return <a href={publicUrl(href)}>{children}</a>;
+            }
             if (isAuthDownloadHref(href)) {
               return (
                 <AuthFileDownloadLink url={href!} style={{ color: "inherit" }}>

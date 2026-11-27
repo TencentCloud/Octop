@@ -1,4 +1,14 @@
 {
+  "compactModel": {
+    "expert": "/compact summary model",
+    "global": "Default /compact summary model",
+    "session": "Follow the current conversation",
+    "inherit": "Inherit global setting",
+    "inheritValue": "Inherit global setting ({{model}})",
+    "restricted": "Configured model is unavailable to this user",
+    "loadError": "Could not load global compression settings",
+    "saveError": "Could not save. Please try again."
+  },
   "app": {
     "pageTitle": "Octop"
   },

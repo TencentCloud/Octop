@@ -7,7 +7,6 @@ import inspect
 import logging
 import time
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
@@ -70,6 +69,11 @@ from octop.infra.gateway.process.message_keys import (
     session_key_from_message,
     session_metadata_from_message,
 )
+from octop.infra.gateway.process.model_route import (
+    ResolvedModelRoute,
+    model_ref_from_meta,
+    resolve_conversation_route,
+)
 from octop.infra.gateway.process.stream_project import (
     StreamProjectionState,
     enrich_tool_stream_chunk,
@@ -87,7 +91,6 @@ from octop.infra.history.projection import (
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
-    get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.stream_close import close_event_stream
@@ -155,12 +158,6 @@ class _MessageEventSink(SlashSink):
 
     async def complete(self) -> None:
         pass
-
-
-@dataclass(frozen=True)
-class _ResolvedModelRoute:
-    model_ref: str | None
-    automatic: bool
 
 
 class _ResolvedTurnMcp(NamedTuple):
@@ -758,20 +755,7 @@ class GlobalProcessor:
         ):
             yield ev
 
-    @staticmethod
-    def _model_ref_from_meta(
-        thread_model: str | None,
-        meta: dict[str, Any] | None,
-        sticky_model: str | None = None,
-    ) -> str | None:
-        meta_model = (meta or {}).get("model")
-        # Explicit composer choice wins, followed by its persisted conversation
-        # value. The legacy /model override remains supported at lower priority.
-        model_ref = meta_model or sticky_model or thread_model
-        if isinstance(model_ref, str):
-            stripped = model_ref.strip()
-            return stripped or None
-        return None
+    _model_ref_from_meta = staticmethod(model_ref_from_meta)
 
     def _resolve_harness_model(
         self,
@@ -798,7 +782,7 @@ class GlobalProcessor:
         *,
         needs_multimodal: bool,
         user_id: int = 0,
-    ) -> _ResolvedModelRoute:
+    ) -> ResolvedModelRoute:
         """Per-turn ``model`` for harness requests.
 
         - Expert AUTO (no ``default_model`` on row): omit ``model`` → harness routes.
@@ -807,58 +791,17 @@ class GlobalProcessor:
           falls through to a usable expert default or harness AUTO.
         - When a model is passed and the turn needs vision, upgrade to a vision ref.
         """
-        providers = self._agent_manager.providers
-        thread_model = self._agent_manager.get_thread_model(agent_id, thread_id)
-        thread_row = self._thread_registry.get_thread(thread_id)
-        model_ref = self._model_ref_from_meta(
-            thread_model,
+        return resolve_conversation_route(
+            self._agent_manager,
+            self._thread_registry,
+            self._agent_repo,
+            self._user_repo,
+            agent_id,
+            thread_id,
             meta,
-            thread_row.model_ref if thread_row is not None else None,
-        )
-        automatic = False
-        if model_ref and not providers.is_model_ref_usable(model_ref):
-            model_ref = None
-        if model_ref and not self._agent_manager.model_ref_allowed_for_user(user_id, model_ref):
-            model_ref = None
-        if not model_ref:
-            row = self._agent_repo.get(agent_id)
-            if row is not None:
-                model_ref = providers.resolve_explicit_default_model(
-                    row,
-                    self._agent_manager.get_config(agent_id),
-                )
-                if model_ref and not self._agent_manager.model_ref_allowed_for_user(
-                    user_id,
-                    model_ref,
-                ):
-                    model_ref = None
-        if not model_ref:
-            user_row = self._user_repo.get(user_id)
-            preferred = get_preferred_model_from_json(
-                user_row.preferences_json if user_row is not None else None
-            )
-            if (
-                preferred
-                and self._agent_manager.is_auto_route_model_available(preferred)
-                and self._agent_manager.model_ref_allowed_for_user(user_id, preferred)
-            ):
-                model_ref = preferred
-                automatic = True
-        if not model_ref:
-            fallback = self._agent_manager.resolve_fallback_model_ref()
-            candidate = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
-            if candidate and self._agent_manager.model_ref_allowed_for_user(user_id, candidate):
-                model_ref = candidate
-                automatic = True
-        if not model_ref:
-            return _ResolvedModelRoute(None, automatic=True)
-        resolved = providers.resolve_model_for_multimodal_turn(
-            model_ref,
+            user_id=user_id,
             needs_multimodal=needs_multimodal,
         )
-        if resolved != model_ref:
-            automatic = True
-        return _ResolvedModelRoute(resolved, automatic=automatic)
 
     def _resolve_reasoning_overrides(
         self,

@@ -2725,7 +2725,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.5" },
-    { name = "octop-harness", extras = ["all", "cubesandbox-native", "remote-backends"], specifier = ">=1.0.13" },
+    { name = "octop-harness", extras = ["all", "cubesandbox-native", "remote-backends"], git = "https://github.com/TencentCloud/octop-harness.git?rev=c286485a02f19c8ecd8f0367d50c75658e834c1c" },
     { name = "octop-memory", specifier = ">=1.0.7" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2823,7 +2823,7 @@ wheels = [
 [[package]]
 name = "octop-harness"
 version = "1.0.13"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/TencentCloud/octop-harness.git?rev=c286485a02f19c8ecd8f0367d50c75658e834c1c#c286485a02f19c8ecd8f0367d50c75658e834c1c" }
 dependencies = [
     { name = "deepagents" },
     { name = "httpx" },
@@ -2839,10 +2839,6 @@ dependencies = [
     { name = "octop-browser" },
     { name = "octop-memory" },
     { name = "pyyaml" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/12/99/4ac00a27fbefd6d5b82814e7570733423ff27e73d3bd1430844b69a09689/octop_harness-1.0.13.tar.gz", hash = "sha256:5b9262c0054d94b458b3e03c833cd870bb85d16521a19ee63b33f9d513cdafd8", size = 1064107, upload-time = "2026-11-26T13:04:05.734Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/93/dcff063388524d7e374a16c9b38ff546b24229fdff26d96c783f8669e9c5/octop_harness-1.0.13-py3-none-any.whl", hash = "sha256:96d55c25e77e6ff25755d611021ff600c2a53f50a8e5ebe9c9eb3453c36501f9", size = 1265887, upload-time = "2026-11-26T13:04:04.263Z" },
 ]
 
 [package.optional-dependencies]

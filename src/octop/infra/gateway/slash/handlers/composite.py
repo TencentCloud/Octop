@@ -19,6 +19,11 @@ from octop.infra.gateway.slash.formatting import (
     markdown_kv_block,
     server_uptime_label,
 )
+from octop.infra.gateway.slash.handlers.compact_model import (
+    compact_diagnostics,
+    compact_route,
+    settings_hint,
+)
 from octop.infra.gateway.slash.types import GatewayHandler
 from octop.infra.utils.locale import Locale, normalize_locale
 
@@ -76,6 +81,7 @@ async def cmd_compact(
         return
     if ctx.agent_manager is None:
         await sink.text(tr("compact.unavailable", lang))
+        await sink.text(settings_hint(ctx, "expert"))
         return
 
     try:
@@ -83,41 +89,47 @@ async def cmd_compact(
     except Exception:
         logger.exception("compact: get_agent failed agent_id=%s", ctx.agent_id)
         await sink.text(tr("compact.unavailable", lang))
+        await sink.text(settings_hint(ctx, "expert"))
         return
 
     compact = getattr(harness, "acompact_conversation", None)
     if compact is None:
         await sink.text(tr("compact.unavailable", lang))
+        await sink.text(settings_hint(ctx, "expert"))
         return
 
-    # Prefer the model selected in the chat composer for this turn, then a
-    # sticky thread /model override, then settings active / first usable model.
-    override = d.get_thread_model_override(ctx, tid)
-    if not isinstance(override, str) or not override.strip():
-        override = None
-    model_ref = ctx.model_ref or override or ctx.agent_manager.resolve_fallback_model_ref()
+    route = compact_route(ctx, tid)
+    if route.primary is None:
+        if route.skipped:
+            await sink.text(route.skipped)
+        await sink.text(tr("compact.no_model", lang))
+        await sink.text(settings_hint(ctx, route.scope))
+        return
     try:
-        result = await compact(tid, model=model_ref)
+        result = await compact(tid, model=route.primary, fallback_model=route.alternate)
     except Exception:
-        logger.exception(
-            "compact: acompact_conversation failed thread=%s model=%s",
-            tid,
-            model_ref,
-        )
+        logger.exception("compact failed thread=%s", tid)
         await sink.text(tr("compact.failed", lang))
+        await sink.text(settings_hint(ctx, route.scope))
         return
 
-    reason = getattr(result, "reason", "") or ""
-    if not getattr(result, "ok", False):
-        err = getattr(result, "error", None)
-        if reason == "nothing_to_compact":
-            await sink.text(tr("compact.nothing", lang, short=tid[-6:]))
-        elif reason == "unavailable":
-            logger.warning("compact unavailable thread=%s err=%s", tid, err)
-            await sink.text(tr("compact.unavailable", lang))
-        else:
-            logger.warning("compact failed thread=%s reason=%s err=%s", tid, reason, err)
-            await sink.text(tr("compact.failed", lang))
+    reason = result.reason
+    if reason == "nothing_to_compact":
+        await sink.text(tr("compact.nothing", lang, short=tid[-6:]))
+        return
+    diagnostics = compact_diagnostics(ctx, route, result)
+    if not result.ok:
+        logger.warning(
+            "compact failed thread=%s stage=%s error=%s", tid, result.failure_stage, result.error
+        )
+        await sink.text(
+            tr("compact.unavailable" if reason == "unavailable" else "compact.failed", lang)
+        )
+    for line in diagnostics:
+        await sink.text(line)
+    if diagnostics or not result.ok:
+        await sink.text(settings_hint(ctx, route.scope))
+    if not result.ok:
         return
 
     count = int(getattr(result, "summarized_count", 0) or 0)

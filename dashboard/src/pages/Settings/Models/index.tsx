@@ -11,6 +11,7 @@
  *  3. Embedding tab — ONNX + purpose=embedding providers (scheme A).
  */
 import { useMemo, useState } from "react";
+import { GlobalCompactModel } from "../../../components/CompactModelSelect";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
 import {
   Boxes,
@@ -408,7 +409,10 @@ export default function ModelsPage() {
       ) : error ? (
         <LoadingState message={error} error onRetry={() => void fetchAll()} />
       ) : !hasContent ? (
-        <Empty description={t("models.noProvidersHint")} />
+        <>
+          <Empty description={t("models.noProvidersHint")} />
+          {canProviders && <GlobalCompactModel models={resolvedModels} />}
+        </>
       ) : (
         <>
           <ActiveModelPool
@@ -419,6 +423,7 @@ export default function ModelsPage() {
             onSaved={fetchAll}
           />
 
+          {canProviders && <GlobalCompactModel models={resolvedModels} />}
           <Divider style={{ margin: "24px 0" }} />
 
           {showPresetSection && (

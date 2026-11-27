@@ -29,6 +29,18 @@ export const providerApi = {
       headers: bridgeAgentHeaders(agentId),
     }),
 
+  getCompactionModel: (agentId?: string | null) =>
+    request<{ model: string | null; restricted?: boolean }>(
+      "/providers/compaction-model",
+      { headers: bridgeAgentHeaders(agentId) },
+    ),
+
+  setCompactionModel: (model: string | null) =>
+    request<{ model: string | null }>("/providers/compaction-model", {
+      method: "PUT",
+      body: JSON.stringify({ model }),
+    }),
+
   getActiveModel: (agentId?: string | null) =>
     request<{ provider_name: string; model: string }>(
       "/providers/active-model",

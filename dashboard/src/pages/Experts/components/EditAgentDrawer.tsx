@@ -186,6 +186,7 @@ interface EditFormValues extends AgentRuntimeFormValues {
 }
 
 interface EditAgentDrawerProps {
+  focusCompact?: boolean;
   open: boolean;
   agent: OctopAgent | null;
   onClose: () => void;
@@ -204,6 +205,7 @@ interface EditAgentDrawerProps {
 }
 
 interface EditAgentDrawerBodyProps {
+  focusCompact?: boolean;
   agent: OctopAgent;
   onClose: () => void;
   onSaved: EditAgentDrawerProps["onSaved"];
@@ -254,13 +256,14 @@ async function persistWelcomeManifest(
 }
 
 function EditAgentDrawerBody({
+  focusCompact,
   agent,
   onClose,
   onSaved,
   onSaveReady,
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
-  const [runtimeOpen, setRuntimeOpen] = useState(false);
+  const [runtimeOpen, setRuntimeOpen] = useState(!!focusCompact);
   const { t, i18n } = useTranslation();
   const { modal, message } = App.useApp();
   const { refresh } = useAgent();
@@ -1464,7 +1467,12 @@ function EditAgentDrawerBody({
                   open={runtimeOpen}
                   onOpenChange={setRuntimeOpen}
                 >
-                  <AgentAdvancedConfigFields grouped />
+                  <AgentAdvancedConfigFields
+                    grouped
+                    models={models}
+                    agentId={agent.agent_id}
+                    focusCompact={focusCompact}
+                  />
                 </ExpertSettingsDrawer>
               )}
             </ExpertDrawerSection>
@@ -1499,6 +1507,7 @@ function EditAgentDrawerBody({
 }
 
 export default function EditAgentDrawer({
+  focusCompact,
   open,
   agent,
   onClose,
@@ -1536,6 +1545,7 @@ export default function EditAgentDrawer({
     >
       {open && agent ? (
         <EditAgentDrawerBody
+          focusCompact={focusCompact}
           agent={agent}
           onClose={onClose}
           onSaved={onSaved}

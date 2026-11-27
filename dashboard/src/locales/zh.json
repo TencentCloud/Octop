@@ -1,4 +1,14 @@
 {
+  "compactModel": {
+    "expert": "/compact 摘要模型",
+    "global": "默认 /compact 摘要模型",
+    "session": "跟随当前会话模型",
+    "inherit": "继承全局设置",
+    "inheritValue": "继承全局设置（{{model}}）",
+    "restricted": "当前用户无权使用已配置模型",
+    "loadError": "无法读取全局压缩设置",
+    "saveError": "保存失败，请重试。"
+  },
   "app": {
     "pageTitle": "Octop"
   },
