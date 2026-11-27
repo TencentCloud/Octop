@@ -101,7 +101,7 @@ def _assert_v26_repairs_new_v25_columns(db: DatabasePool, *, capped: bool) -> No
             == 1234
         )
         conn.execute("SELECT contributed FROM threads LIMIT 1")
-        assert conn.execute("SELECT version FROM _schema_version").fetchone()[0] == 26
+        assert conn.execute("SELECT version FROM _schema_version").fetchone()[0] == 27
         columns = {
             column[0] for column in conn.execute("SELECT * FROM user_invites LIMIT 0").description
         }

@@ -440,7 +440,18 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST` | `/agents/{aid}/memory/manual-review` | owner | reconcile saved USER.md + MEMORY.md against up to 100 unchecked atoms; duplicates remain stored, proven conflicts retire the old atom and create a replacement review candidate with evidence |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
+| `GET`/`PUT` | `/agents/{aid}/proactive-care` | owner/admin | Read or save the care schedule and generation settings |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+For proactive care, `model_ref` accepts an enabled `provider/model` or `null` to
+follow the agent. The response includes `default_model_ref` for the inherited
+model. Set `reasoning_effort` to `auto`, to `disabled` if the model supports
+switching reasoning off, or to one of its advertised efforts.
+`generation_timeout_seconds` is an integer from 1 to 3600 and defaults to 30
+per attempt. A generation timeout gets one more attempt in the same round
+while delivery is still appropriate. Empty visible text ends the round before
+any message or push record is written. Clients sending only the schedule
+preserve previously saved generation settings.
 
 The extraction-config API accepts independent `memory_capture_enabled` and
 `memory_recall_inject_enabled` booleans. Both default to `true`: set the first to

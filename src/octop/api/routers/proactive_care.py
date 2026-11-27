@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from octop.api.common.agent import require_agent_owner_row
+from octop.api.common.memory_model import validate_model_ref
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.providers.reasoning import supports_reasoning_setting
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig
 
 router = APIRouter()
@@ -31,6 +33,23 @@ class ProactiveCareConfigBody(BaseModel):
     active_hours_end: str = "22:00"
     min_interval_hours: int = 5
     max_interval_hours: int = 24
+    model_ref: str | None = Field(
+        default=None,
+        description="Care model in provider/model form; null follows the agent default.",
+    )
+    reasoning_effort: str = Field(
+        default="auto",
+        min_length=1,
+        max_length=64,
+        description="auto, disabled, or an effort advertised by the selected model.",
+    )
+    generation_timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        strict=True,
+        description="Time allowed for each generation attempt, in seconds.",
+    )
 
     @field_validator("active_hours_start", "active_hours_end")
     @classmethod
@@ -74,8 +93,12 @@ class ProactiveCareConfigBody(BaseModel):
         return self
 
 
-def _config_to_dict(cfg: ProactiveCareConfig) -> dict[str, Any]:
+def _config_to_dict(cfg: ProactiveCareConfig, default_model_ref: str | None) -> dict[str, Any]:
     return {
+        "model_ref": cfg.model_ref,
+        "default_model_ref": default_model_ref,
+        "reasoning_effort": cfg.reasoning_effort,
+        "generation_timeout_seconds": cfg.generation_timeout_seconds,
         "enabled": cfg.enabled,
         "active_hours_start": cfg.active_hours_start,
         "active_hours_end": cfg.active_hours_end,
@@ -84,9 +107,9 @@ def _config_to_dict(cfg: ProactiveCareConfig) -> dict[str, Any]:
     }
 
 
-def _get_proactive_scheduler(server: Any) -> Any:
-    assert server.app_runtime is not None
-    return server.app_runtime.proactive_scheduler
+def _visible_default_model(registry: Any, row: Any, user_id: int) -> str | None:
+    ref = registry.configured_default_model_ref(row)
+    return ref if ref and registry.model_ref_allowed_for_user(user_id, ref) else None
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +127,12 @@ async def get_proactive_care_config(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Read the agent's proactive care push configuration, returning defaults if not configured."""
-    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    registry = server.app_runtime.agent_registry
+    owner_id = row.user_id if row.user_id is not None else user.id
+    default_ref = _visible_default_model(registry, row, owner_id)
     cfg = server.services.repos.proactive_care_config_repo.get(agent_id)
-    return _config_to_dict(cfg)
+    return _config_to_dict(cfg, default_ref)
 
 
 @router.put(
@@ -126,20 +152,30 @@ async def put_proactive_care_config(
     - min_interval_hours <= max_interval_hours
     - min_interval_hours >= 1
     """
-    require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    registry = server.app_runtime.agent_registry
+    owner_id = row.user_id if row.user_id is not None else user.id
+    default_ref = _visible_default_model(registry, row, owner_id)
+
+    repo = server.services.repos.proactive_care_config_repo
+    fields = body.model_fields_set
+    previous = repo.get(agent_id)
+    model_ref = previous.model_ref
+    if "model_ref" in fields and body.model_ref != previous.model_ref:
+        model_ref = validate_model_ref(body.model_ref, registry, owner_id, field="model_ref")
+    effort = body.reasoning_effort if "reasoning_effort" in fields else previous.reasoning_effort
+    if (model_ref, effort) != (previous.model_ref, previous.reasoning_effort) and effort != "auto":
+        ref = model_ref or default_ref
+        if not supports_reasoning_setting(
+            registry.providers.get_model_reasoning_capability(ref) if ref else None, effort
+        ):
+            raise HTTPException(
+                status_code=422, detail="Unsupported reasoning setting for the selected model"
+            )
 
     cfg = ProactiveCareConfig(
-        agent_id=agent_id,
-        enabled=body.enabled,
-        active_hours_start=body.active_hours_start,
-        active_hours_end=body.active_hours_end,
-        min_interval_hours=body.min_interval_hours,
-        max_interval_hours=body.max_interval_hours,
+        agent_id=agent_id, model_ref=model_ref, **body.model_dump(exclude={"model_ref"})
     )
-    server.services.repos.proactive_care_config_repo.upsert(cfg)
-
-    # Immediately update the scheduler task
-    scheduler = _get_proactive_scheduler(server)
-    scheduler.reschedule(agent_id)
-
-    return _config_to_dict(cfg)
+    repo.upsert(cfg, generation_fields=fields)
+    server.app_runtime.proactive_scheduler.reschedule(agent_id)
+    return _config_to_dict(repo.get(agent_id), default_ref)

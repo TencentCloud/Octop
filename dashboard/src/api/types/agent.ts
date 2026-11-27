@@ -89,6 +89,11 @@ export interface ProactiveCareConfig {
   min_interval_hours: number;
   /** Maximum interval between pushes, in integer hours, >= min_interval_hours. */
   max_interval_hours: number;
+  model_ref?: string | null;
+  /** Effective model when the care model follows the agent. Returned by GET. */
+  readonly default_model_ref?: string | null;
+  reasoning_effort?: string;
+  generation_timeout_seconds?: number;
   /**
    * Episode filter.
    * null or omitted = all episodes.

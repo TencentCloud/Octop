@@ -21,9 +21,19 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+import anthropic
+import httpx
+import openai
+from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from octop.i18n.loader import tr as i18n_tr
+from octop.infra.agents.providers.reasoning import (
+    model_with_reasoning,
+    reasoning_request_parameters,
+    supports_reasoning_setting,
+)
+from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig
 from octop.infra.db.repos.threads import ThreadRow
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import message_inputs
@@ -236,11 +246,45 @@ class ProactiveCareService:
         await self._gateway.run_in_session(agent_id, session_key, _locked)
         return delivered
 
+    def _generation_model(self, agent: Any, cfg: ProactiveCareConfig, model_ref: str) -> Any:
+        if cfg.model_ref:
+            row = self._agent_manager.get_row(cfg.agent_id)
+            if row is None or (
+                row.user_id is not None
+                and not self._agent_manager.model_ref_allowed_for_user(row.user_id, model_ref)
+            ):
+                raise ValueError("Configured care model is no longer available to the agent owner")
+        # Own the two generation attempts, including for SDKs with implicit retries.
+        model = agent.model_factory.get_chat_model(model_ref, max_retries=0)
+        if cfg.reasoning_effort != "auto":
+            capability = self._agent_manager.providers.get_model_reasoning_capability(model_ref)
+            if supports_reasoning_setting(capability, cfg.reasoning_effort):
+                disabled = cfg.reasoning_effort == "disabled"
+                overrides = reasoning_request_parameters(
+                    capability,
+                    mode="disabled" if disabled else "enabled",
+                    effort=None if disabled else cfg.reasoning_effort,
+                )
+                model = model_with_reasoning(model, overrides)
+            else:
+                logger.warning(
+                    "ProactiveCareService: model=%s no longer supports reasoning=%s; using model default",
+                    model_ref,
+                    cfg.reasoning_effort,
+                )
+        # OpenAI and Anthropic SDKs also impose an HTTP deadline. Override it
+        # per call when supported, leaving other providers to the outer deadline.
+        fields = getattr(type(model), "model_fields", {})
+        if "request_timeout" in fields or "default_request_timeout" in fields:
+            return model.bind(timeout=cfg.generation_timeout_seconds)
+        return model
+
     async def run(
         self,
         agent_id: str,
         session_key: str,
         *,
+        config: ProactiveCareConfig | None = None,
         can_send: Callable[[], bool] | None = None,
     ) -> None:
         """Run one proactive care push.
@@ -358,25 +402,48 @@ class ProactiveCareService:
 
         # 6. Call the LLM to generate the care message
         episode_context = _format_episodes_for_prompt(pick_result.episodes)
+        cfg = config or ProactiveCareConfig(agent_id=agent_id)
         try:
-            llm = agent.model_factory.get(agent.config.pick_default_model_ref())
+            model_ref = cfg.model_ref or agent.config.pick_default_model_ref()
+            llm = self._generation_model(agent, cfg, model_ref)
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=f"User's recent life events:\n\n{episode_context}"),
             ]
-            care_text = await ainvoke_text(llm, messages, timeout=30.0)
-            # Truncate to the max length
-            if len(care_text) > _MAX_CARE_TEXT_LEN:
-                care_text = care_text[:_MAX_CARE_TEXT_LEN]
-            logger.info(
-                "ProactiveCareService: LLM generated care message (%d chars) agent=%s: %s",
-                len(care_text),
-                agent_id,
-                care_text[:50] + "..." if len(care_text) > 50 else care_text,
+            for attempt in (1, 2):
+                try:
+                    care_text = await ainvoke_text(
+                        llm, messages, timeout=cfg.generation_timeout_seconds
+                    )
+                    break
+                except (
+                    TimeoutError,
+                    httpx.TimeoutException,
+                    ConnectTimeoutError,
+                    ReadTimeoutError,
+                    openai.APITimeoutError,
+                    anthropic.APITimeoutError,
+                ):
+                    logger.warning(
+                        "ProactiveCareService: generation timed out agent=%s model=%s attempt=%d/2 timeout=%ds",
+                        agent_id,
+                        model_ref,
+                        attempt,
+                        cfg.generation_timeout_seconds,
+                    )
+                    if attempt == 2 or (can_send is not None and not can_send()):
+                        return
+            if not care_text:
+                logger.warning(
+                    "ProactiveCareService: empty generation agent=%s model=%s", agent_id, model_ref
+                )
+                return
+            care_text = care_text[:_MAX_CARE_TEXT_LEN]
+        except Exception:
+            logger.warning(
+                "ProactiveCareService: LLM call failed agent=%s", agent_id, exc_info=True
             )
-        except Exception as exc:
-            logger.warning("ProactiveCareService: LLM call failed agent=%s: %s", agent_id, exc)
-            return  # do not push, do not write a record
+            return
 
         # 7. Persist and push the message directly without invoking the agent.
         if can_send is not None and not can_send():

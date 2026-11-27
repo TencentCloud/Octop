@@ -157,6 +157,27 @@ def _selected_reasoning(
     return selected_mode, selected_effort
 
 
+def model_with_reasoning(model: Any, overrides: dict[str, Any]) -> Any:
+    """Apply provider settings to one call without changing the cached chat model."""
+    if not hasattr(model, "model_copy"):
+        return model
+    updates = dict(overrides.get("model_fields") or {})
+    extra = overrides.get("extra_body")
+    if isinstance(extra, dict) and extra and hasattr(model, "extra_body"):
+        updates["extra_body"] = {**(model.extra_body or {}), **extra}
+    return model.model_copy(update=updates) if updates else model
+
+
+def supports_reasoning_setting(capability: dict[str, Any] | None, setting: str) -> bool:
+    if setting == "auto":
+        return True
+    if not capability:
+        return False
+    if setting == "disabled":
+        return bool(capability.get("toggle"))
+    return setting in capability.get("efforts", [])
+
+
 def reasoning_request_parameters(
     capability: dict[str, Any] | None,
     *,
@@ -211,7 +232,7 @@ def reasoning_request_parameters(
     elif adapter in {"thinking", "thinking_nested_effort"}:
         if selected_mode != "auto":
             extra_body["thinking"] = {"type": selected_mode}
-        if selected_effort:
+        if selected_effort and selected_mode != "disabled":
             if adapter == "thinking_nested_effort":
                 thinking = dict(extra_body.get("thinking") or {"type": "enabled"})
                 thinking["reasoning_effort"] = selected_effort

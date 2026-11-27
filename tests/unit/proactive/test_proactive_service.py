@@ -11,16 +11,22 @@ Coverage:
 
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
+from botocore.exceptions import ReadTimeoutError
+from langchain_openai import ChatOpenAI
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.care_push import CarePushRepo
+from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig
 from octop.infra.db.repos.sessions import SessionRepo, SessionRow
 from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
@@ -101,12 +107,13 @@ def _make_agent(
         llm_msg.content = llm_response
         llm.ainvoke = AsyncMock(return_value=llm_msg)
     model_factory = MagicMock()
-    model_factory.get = MagicMock(return_value=llm)
+    model_factory.get_chat_model = MagicMock(return_value=llm)
     agent.model_factory = model_factory
     # Mock config.
     config = MagicMock()
     config.memory_aux_light_model = "openai/gpt-4o-mini"
     config.default_model = "openai/gpt-4o-mini"
+    config.pick_default_model_ref.return_value = config.default_model
     config.locale = "zh-CN"
     agent.config = config
 
@@ -194,7 +201,7 @@ async def test_service_run_success(agent_id: str, care_push_repo: CarePushRepo):
     # Verify dedup records were written.
     pushed = care_push_repo.list_pushed_episode_ids(agent_id)
     assert len(pushed) > 0
-    agent.model_factory.get.assert_called_once()
+    agent.model_factory.get_chat_model.assert_called_once_with("openai/gpt-4o-mini", max_retries=0)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +244,164 @@ async def test_service_run_llm_failure(agent_id: str, care_push_repo: CarePushRe
     assert len(pushed) == 0
 
 
+@pytest.mark.asyncio
+async def test_timeout_retries_same_messages_before_single_delivery(agent_id, care_push_repo):
+    agent = _make_agent([_make_episode("ep1")])
+    gateway = _make_gateway()
+    service = ProactiveCareService(
+        gateway=gateway, care_push_repo=care_push_repo, agent_manager=_make_agent_manager(agent)
+    )
+    llm = agent.model_factory.get_chat_model.return_value
+    first_cancelled = asyncio.Event()
+
+    async def generate(messages):
+        if llm.ainvoke.await_count == 1:
+            try:
+                await asyncio.Event().wait()
+            finally:
+                first_cancelled.set()
+        return "Care"
+
+    llm.ainvoke.side_effect = generate
+    cfg = ProactiveCareConfig(agent_id=agent_id, generation_timeout_seconds=1)
+    await asyncio.wait_for(service.run(agent_id, "dm", config=cfg), timeout=5)
+    assert first_cancelled.is_set()
+    first, second = llm.ainvoke.await_args_list
+    assert first == second
+    agent.memory.list_episodes.assert_called_once()
+    agent.aappend_messages.assert_awaited_once()
+    gateway.push_session_text.assert_awaited_once()
+    assert len(care_push_repo.list_recent(agent_id)) == 1
+
+
+@pytest.mark.parametrize(
+    ("failure", "can_send", "attempts"),
+    [
+        (TimeoutError(), True, 2),
+        (ReadTimeoutError(endpoint_url="https://example.invalid"), True, 2),
+        (httpx.ReadTimeout("read timed out"), False, 1),
+        (ValueError("invalid model request"), True, 1),
+    ],
+)
+@pytest.mark.asyncio
+async def test_failed_generation_stops_before_delivery(
+    agent_id, care_push_repo, failure, can_send, attempts
+):
+    agent = _make_agent([_make_episode("ep1")], llm_raises=failure)
+    gateway = _make_gateway()
+    service = ProactiveCareService(
+        gateway=gateway, care_push_repo=care_push_repo, agent_manager=_make_agent_manager(agent)
+    )
+    await service.run(agent_id, "dm", can_send=lambda: can_send)
+    assert agent.model_factory.get_chat_model.return_value.ainvoke.await_count == attempts
+    agent.aappend_messages.assert_not_awaited()
+    gateway.run_in_session.assert_not_awaited()
+    assert care_push_repo.list_recent(agent_id) == []
+
+
+@pytest.mark.parametrize(
+    "output", ["   ", "<think>reasoning only</think>", [{"type": "reasoning", "text": "hidden"}]]
+)
+@pytest.mark.asyncio
+async def test_empty_visible_text_does_not_consume_episode(agent_id, care_push_repo, output):
+    agent = _make_agent([_make_episode("ep1")], llm_response=output)
+    gateway = _make_gateway()
+    service = ProactiveCareService(
+        gateway=gateway, care_push_repo=care_push_repo, agent_manager=_make_agent_manager(agent)
+    )
+    await service.run(agent_id, "dm")
+    agent.model_factory.get_chat_model.return_value.ainvoke.assert_awaited_once()
+    agent.aappend_messages.assert_not_awaited()
+    gateway.run_in_session.assert_not_awaited()
+    assert not care_push_repo.list_pushed_episode_ids(agent_id)
+
+
+@pytest.mark.parametrize(
+    ("adapter", "effort", "expected"),
+    [
+        ("openai_reasoning_effort", "low", {"reasoning_effort": "low"}),
+        ("thinking_nested_effort", "disabled", {"thinking": {"type": "disabled"}}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generation_sends_provider_specific_settings(
+    agent_id, care_push_repo, adapter, effort, expected
+):
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "completion",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "fast",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "Care"},
+                    }
+                ],
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        model = ChatOpenAI(
+            model="fast",
+            api_key="test",
+            http_async_client=client,
+            extra_body={"vendor_option": True},
+            max_retries=0,
+        )
+        agent = _make_agent([_make_episode("ep1")])
+        agent.model_factory.get_chat_model.return_value = model
+        manager = _make_agent_manager(agent)
+        manager.providers.get_model_reasoning_capability.return_value = {
+            "adapter": adapter,
+            "efforts": ["low", "high"],
+            "default_effort": "high",
+            "toggle": True,
+        }
+        service = ProactiveCareService(
+            gateway=_make_gateway(), care_push_repo=care_push_repo, agent_manager=manager
+        )
+        cfg = ProactiveCareConfig(
+            agent_id=agent_id,
+            model_ref="demo/fast",
+            reasoning_effort=effort,
+            generation_timeout_seconds=73,
+        )
+        await service.run(agent_id, "dm", config=cfg)
+        agent.model_factory.get_chat_model.assert_called_once_with("demo/fast", max_retries=0)
+        agent.config.pick_default_model_ref.assert_not_called()
+        assert len(requests) == 1
+        body = json.loads(requests[0].content)
+        assert body["vendor_option"] is True
+        assert {k: body[k] for k in expected} == expected
+        assert requests[0].extensions["timeout"]["read"] == 73
+        assert model.extra_body == {"vendor_option": True}
+        assert model.reasoning_effort is None
+        assert len(care_push_repo.list_recent(agent_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_care_model_access_revoked_since_save(agent_id, care_push_repo):
+    agent = _make_agent([_make_episode("ep1")])
+    manager = _make_agent_manager(agent)
+    manager.model_ref_allowed_for_user.return_value = False
+    service = ProactiveCareService(
+        gateway=_make_gateway(), care_push_repo=care_push_repo, agent_manager=manager
+    )
+    await service.run(
+        agent_id, "dm", config=ProactiveCareConfig(agent_id=agent_id, model_ref="private/model")
+    )
+    agent.model_factory.get_chat_model.assert_not_called()
+    assert not care_push_repo.list_recent(agent_id)
+
+
 # ---------------------------------------------------------------------------
 # Test: push failure
 # ---------------------------------------------------------------------------
@@ -255,6 +420,21 @@ async def test_service_run_push_failure(agent_id: str, care_push_repo: CarePushR
     # Verify no dedup records were written.
     pushed = care_push_repo.list_pushed_episode_ids(agent_id)
     assert len(pushed) == 0
+
+
+@pytest.mark.asyncio
+async def test_delivery_timeout_never_retries_generation_or_delivery(agent_id, care_push_repo):
+    agent = _make_agent([_make_episode("ep1")])
+    gateway = _make_gateway()
+    gateway.push_session_text.side_effect = TimeoutError()
+    service = ProactiveCareService(
+        gateway=gateway, care_push_repo=care_push_repo, agent_manager=_make_agent_manager(agent)
+    )
+    await service.run(agent_id, "dm")
+    agent.model_factory.get_chat_model.return_value.ainvoke.assert_awaited_once()
+    agent.aappend_messages.assert_awaited_once()
+    gateway.push_session_text.assert_awaited_once()
+    assert care_push_repo.list_recent(agent_id) == []
 
 
 # ---------------------------------------------------------------------------
