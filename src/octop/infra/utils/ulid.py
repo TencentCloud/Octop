@@ -25,7 +25,8 @@ def new_cron_id() -> str:
 def new_ulid() -> str:
     global _LAST_MS, _LAST_RAND
     with _LOCK:
-        ms = int(time.time() * 1000)
+        # Keep the timestamp prefix non-decreasing if the wall clock steps back.
+        ms = max(int(time.time() * 1000), _LAST_MS)
         if ms == _LAST_MS:
             _LAST_RAND += 1
             rand = _LAST_RAND

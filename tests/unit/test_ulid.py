@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import time
 
+from octop.infra.utils import ulid as ulid_module
 from octop.infra.utils.ulid import new_short_id, new_ulid
 
 
@@ -37,3 +38,21 @@ def test_ulid_timestamp_prefix_recent():
     for ch in u[:10]:
         ts = ts * 32 + alphabet.index(ch)
     assert abs(ts - now_ms) < 1000
+
+
+def test_ulid_stays_monotonic_when_clock_moves_back(monkeypatch):
+    class Clock:
+        def __init__(self, *values):
+            self._values = iter(values)
+
+        def time(self):
+            return next(self._values)
+
+    monkeypatch.setattr(ulid_module, "_LAST_MS", 0)
+    monkeypatch.setattr(ulid_module, "_LAST_RAND", 0)
+    monkeypatch.setattr(ulid_module, "time", Clock(2_000_000.0, 1_000_000.0))
+
+    first = ulid_module.new_ulid()
+    second = ulid_module.new_ulid()
+
+    assert first <= second
