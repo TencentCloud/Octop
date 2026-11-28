@@ -22,7 +22,9 @@ function storageBrandIcon(kind: string): ReactNode {
         height: 36,
         borderRadius: 8,
         objectFit:
-          kind === "opensandbox" || kind === "cubesandbox" ? "contain" : "cover",
+          kind === "opensandbox" || kind === "cubesandbox"
+            ? "contain"
+            : "cover",
       }}
     />
   );

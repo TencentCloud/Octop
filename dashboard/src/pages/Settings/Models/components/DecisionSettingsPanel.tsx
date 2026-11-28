@@ -226,9 +226,7 @@ function DrawerFields({
           (value) => ({ value, label: value }),
         );
   const showSavedKey =
-    cloud &&
-    openRouterProviderId != null &&
-    endpoint.includes("openrouter.ai");
+    cloud && openRouterProviderId != null && endpoint.includes("openrouter.ai");
   return (
     <div className={styles.drawerBody}>
       <div className={styles.drawerHint}>
@@ -523,9 +521,7 @@ export function DecisionSettingsPanel({
             model: connection.model,
             api_key: keep && drafts[id].apiKey ? drafts[id].apiKey : null,
             source_provider_id:
-              keep && !drafts[id].apiKey
-                ? drafts[id].sourceProviderId
-                : null,
+              keep && !drafts[id].apiKey ? drafts[id].sourceProviderId : null,
           };
         }),
       });
@@ -573,7 +569,7 @@ export function DecisionSettingsPanel({
         api_key: drafts[id].apiKey || undefined,
         source_provider_id: drafts[id].apiKey
           ? undefined
-          : (drafts[id].sourceProviderId ?? undefined),
+          : drafts[id].sourceProviderId ?? undefined,
       });
       if (result.ok) {
         message.success(

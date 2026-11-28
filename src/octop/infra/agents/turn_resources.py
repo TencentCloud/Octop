@@ -100,36 +100,22 @@ async def resolve_turn_mcp(
             shown=shown,
             failed=[],
         )
+    # Native turn scopes use the same catalog names for loading and execution.
     failed = await agent_manager.prepare_chat_mcp(
         agent_id,
-        requested,
+        shown,
         connector_user_id=user_id,
     )
-    missing = [str(name) for name in failed] if isinstance(failed, list) else list(requested)
+    missing = [str(name) for name in failed] if isinstance(failed, list) else list(shown)
     return ResolvedTurnMcp(
         requested=requested,
-        harness=harness,
+        harness=shown,
         shown=shown,
         failed=missing,
     )
 
 
-def harness_names_for_ready(
-    agent_manager: Any,
-    resolved: ResolvedTurnMcp,
-    *,
-    owner_id: int | None,
-    user_id: int,
-) -> list[str]:
+def harness_names_for_ready(resolved: ResolvedTurnMcp) -> list[str]:
     """Harness names for the servers that actually loaded."""
     failed = set(resolved.failed)
-    ready = [name for name in resolved.requested if name not in failed]
-    if not ready:
-        return []
-    if len(ready) == len(resolved.requested):
-        return list(resolved.harness)
-    if owner_id is not None and owner_id != user_id:
-        aligned = agent_manager.align_mcp_names_to_harness(owner_id, user_id, ready)
-        if isinstance(aligned, list):
-            return [str(name) for name in aligned if str(name).strip()]
-    return ready
+    return [name for name in resolved.harness if name not in failed]
