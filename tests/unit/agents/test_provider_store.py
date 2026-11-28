@@ -489,11 +489,43 @@ def test_clear_stale_pins_for_provider(tmp_path: Path) -> None:
         provider_name="hai",
         models=[{"id": "still-there", "enabled": True}],
     )
-    assert cleared == ["01STALE"]
+    assert cleared == [{"id": "01STALE", "name": "stale", "old_model": "hai/deleted"}]
     assert agent_repo.get("01KEEP").default_model == "hai/still-there"
     assert agent_repo.get("01STALE").default_model is None
     assert agent_repo.get("01OTHER").default_model == "other/m"
     assert settings_repo.get_active_model() == ("", "")
+
+
+def test_clear_stale_pins_with_empty_models_would_clear_every_pin(tmp_path: Path) -> None:
+    """Document why the router must skip cleanup for an empty models list.
+
+    Issue #2976: a transient list-load failure submits ``models=[]``. Passing that
+    straight to the store makes *every* pin on the provider look stale. The guard
+    belongs in the router; this store-level behaviour stays unchanged.
+    """
+    from octop.infra.agents.providers.store import clear_stale_pins_for_provider
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    db = SqlitePool(paths.db)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=OctopConfig())
+    agent_repo = services.repos.agent_repo
+    settings_repo = services.repos.settings_repo
+    agent_repo.create(agent_id="01A", user_id=None, name="alpha", default_model="hai/one")
+    agent_repo.create(agent_id="01B", user_id=None, name="beta", default_model="hai/two")
+
+    cleared = clear_stale_pins_for_provider(
+        agent_repo=agent_repo,
+        settings_repo=settings_repo,
+        provider_name="hai",
+        models=[],
+    )
+
+    assert [pin["id"] for pin in cleared] == ["01A", "01B"]
+    assert {pin["old_model"] for pin in cleared} == {"hai/one", "hai/two"}
+    assert agent_repo.get("01A").default_model is None
+    assert agent_repo.get("01B").default_model is None
 
 
 def test_resolve_default_model_auto_returns_none(store: ProviderStore) -> None:
@@ -734,5 +766,5 @@ def test_magpie_model_removal_clears_stale_pins(tmp_path: Path) -> None:
         provider_name="Magpie",
         models=plan.models,
     )
-    assert cleared == ["01GONE"]
+    assert [pin["id"] for pin in cleared] == ["01GONE"]
     assert services.repos.settings_repo.get_active_model() == ("", "")

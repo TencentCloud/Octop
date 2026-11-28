@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
@@ -277,27 +277,47 @@ def enabled_model_refs(
     return refs
 
 
+class ClearedAgentPin(TypedDict):
+    """An expert pin reset to AUTO because its model is no longer enabled."""
+
+    id: str
+    name: str
+    old_model: str
+
+
 def clear_stale_pins_for_provider(
     *,
     agent_repo: Any,
     settings_repo: Any,
     provider_name: str,
     models: list[dict[str, Any]],
-) -> list[str]:
+) -> list[ClearedAgentPin]:
     """Clear agent / active-model pins for *provider_name* missing from *models*.
 
-    One pass over agents. Returns cleared agent ids. Covers models removed in the
-    current patch and pins left stale by earlier deletes.
+    One pass over agents. Returns each cleared pin with the expert name and the
+    dropped model ref, so callers can surface the reset instead of silently
+    degrading to AUTO (issue #2976). Covers models removed in the current patch
+    and pins left stale by earlier deletes.
+
+    The store itself does not judge whether an empty *models* list means "all
+    models removed" or "the list failed to load"; callers must skip this function
+    for an empty list to avoid wiping every pin on the provider.
     """
     valid = enabled_model_refs(provider_name, models)
     prefix = f"{provider_name}/"
-    cleared: list[str] = []
+    cleared: list[ClearedAgentPin] = []
     for row in agent_repo.list_all():
         dm = (row.default_model or "").strip()
         if not dm.startswith(prefix) or dm in valid:
             continue
         agent_repo.update_config(row.agent_id, default_model=None)
-        cleared.append(row.agent_id)
+        cleared.append(
+            {
+                "id": str(row.agent_id),
+                "name": str(getattr(row, "name", "") or ""),
+                "old_model": dm,
+            }
+        )
     active_name, active_model = settings_repo.get_active_model()
     if active_name == provider_name and active_model:
         ref = f"{active_name}/{active_model}"
@@ -549,6 +569,7 @@ class ProviderStore:
 
 __all__ = [
     "AutoRouteCandidate",
+    "ClearedAgentPin",
     "KIND_TO_PROTOCOL",
     "ProviderStore",
     "clear_stale_pins_for_provider",

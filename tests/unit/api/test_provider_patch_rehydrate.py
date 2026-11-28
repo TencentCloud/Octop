@@ -171,3 +171,68 @@ async def test_admin_patch_models_clears_stale_agent_default_and_active() -> Non
         models=body.models,
     )
     on_changed.assert_awaited_once_with(provider_name="hai")
+
+
+def _patch_server() -> tuple[MagicMock, MagicMock]:
+    row = MagicMock()
+    row.id = 1
+    row.name = "hai"
+    server = MagicMock()
+    server.services.provider_repo.get.side_effect = [row, row]
+    server.services.provider_repo.update = MagicMock()
+    server.app_runtime.agent_registry.on_provider_changed = AsyncMock()
+    return server, row
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_returns_cleared_agents_in_response() -> None:
+    """Regression for #2976: pins reset to AUTO must be visible in the PATCH response."""
+    server, _ = _patch_server()
+    body = ProviderPatchBody.model_validate(
+        {"models": [{"id": "keep", "name": "keep", "enabled": True}]}
+    )
+    cleared = [
+        {"id": "01STALE", "name": "stale", "old_model": "hai/deleted"},
+        {"id": "01OTHER", "name": "other", "old_model": "hai/removed"},
+    ]
+    with patch(
+        "octop.api.routers.providers.clear_stale_pins_for_provider",
+        return_value=cleared,
+    ):
+        result = await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+
+    assert result["cleared_agents"] == cleared
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_empty_models_keeps_existing_pins() -> None:
+    """An empty model list is a failed/partial load, not a removal of every model."""
+    server, _ = _patch_server()
+    body = ProviderPatchBody.model_validate({"models": []})
+    with patch("octop.api.routers.providers.clear_stale_pins_for_provider") as clear_pins:
+        result = await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+
+    clear_pins.assert_not_called()
+    assert result["cleared_agents"] == []
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_logs_cleared_pins() -> None:
+    """The same cleared-pin list must be findable in the backend log."""
+    server, _ = _patch_server()
+    body = ProviderPatchBody.model_validate(
+        {"models": [{"id": "keep", "name": "keep", "enabled": True}]}
+    )
+    cleared = [{"id": "01STALE", "name": "stale", "old_model": "hai/deleted"}]
+    with (
+        patch(
+            "octop.api.routers.providers.clear_stale_pins_for_provider",
+            return_value=cleared,
+        ),
+        patch("octop.api.routers.providers.logger") as logger_mock,
+    ):
+        await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+
+    logger_mock.warning.assert_called_once()
+    message = logger_mock.warning.call_args[0][0] % logger_mock.warning.call_args[0][1:]
+    assert "hai" in message
