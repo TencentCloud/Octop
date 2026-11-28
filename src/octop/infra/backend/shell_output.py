@@ -1,15 +1,17 @@
 """Decode host-shell output without trusting the locale (issue #1959).
 
 ``HarnessLocalShellBackend`` and ``BubbledLocalShellBackend`` run commands with
-``text=True`` and no ``encoding``. Python then decodes the pipe with
-``locale.getpreferredencoding(False)`` — cp936 on a Chinese Windows host.
+``text=True`` and no ``encoding``. Python 3.11+ then decodes the pipe with
+``locale.getencoding()`` — cp936 on a Chinese Windows host when UTF-8 mode is off.
 Tools such as Python, git, and ripgrep emit UTF-8. On Windows the mismatch
 raises inside ``subprocess``'s reader thread, the exception is discarded, and
 ``execute`` reports ``<no output>`` with exit code 0.
 
 ``cmd`` builtins emit the console code page, so the bytes are not forced to
 UTF-8. Try strict UTF-8, then the locale code page, then GBK, and only then
-replacement characters.
+replacement characters. That policy lives in
+``octop.infra.utils.child_output`` so setup code can reuse it without importing
+this harness wrapper.
 
 This is a process-start stand-in for harness builds that do not yet ship
 ``decode_child_output``. When that function is present the patch is skipped,
@@ -19,10 +21,11 @@ so a newer harness is not decoded twice.
 from __future__ import annotations
 
 import importlib
-import locale
 import logging
 import subprocess
 from typing import Any
+
+from octop.infra.utils.child_output import decode_child_output
 
 logger = logging.getLogger(__name__)
 
@@ -31,24 +34,6 @@ _SHELL_MODULES = (
     "octop_harness.backends.bwrap_shell",
 )
 _INSTALLED = False
-
-
-def decode_child_output(data: bytes | str | None) -> str:
-    """Decode one captured stream. Never raises."""
-    if not data:
-        return ""
-    if isinstance(data, str):
-        return data
-    seen: set[str] = set()
-    for encoding in ("utf-8", locale.getpreferredencoding(False), "gbk"):
-        if not encoding or encoding.lower() in seen:
-            continue
-        seen.add(encoding.lower())
-        try:
-            return data.decode(encoding)
-        except (UnicodeDecodeError, LookupError):
-            continue
-    return data.decode("utf-8", errors="replace")
 
 
 class _ShellSubprocess:

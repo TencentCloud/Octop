@@ -1095,7 +1095,8 @@
     "fpk_target_missing": "FPK site-packages directory does not exist: {path}",
     "version_unavailable": "The installer finished, but the installed Octop version could not be verified.",
     "version_mismatch": "The installer finished, but installed version {actual} does not match requested version {expected}.",
-    "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}."
+    "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}.",
+    "dependencies_missing": "The installer finished, but critical packages could not be imported ({modules})."
   },
   "ldap": {
     "test": {
