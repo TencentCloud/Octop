@@ -14,7 +14,12 @@ from tests.support.app import ensure_control_plane_bound
 
 from octop.api.app import build_app
 from octop.infra import extensions
-from octop.infra.extensions import PublicPaths, extension_public_paths, load_extensions
+from octop.infra.extensions import (
+    PublicPaths,
+    clear_extension_caches,
+    extension_public_paths,
+    load_extensions,
+)
 from octop.infra.server import OctopServer
 
 
@@ -61,11 +66,9 @@ def demo(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Demo]:
     ext = _Demo()
     entries = [_entry("demo", ext), _entry("broken", error=ImportError("nope"))]
     monkeypatch.setattr(extensions, "entry_points", lambda group: entries)
-    load_extensions.cache_clear()
-    extension_public_paths.cache_clear()
+    clear_extension_caches()
     yield ext
-    load_extensions.cache_clear()
-    extension_public_paths.cache_clear()
+    clear_extension_caches()
 
 
 def test_broken_extension_is_skipped(demo: _Demo) -> None:
@@ -144,11 +147,9 @@ def a_ok_b_fails(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[list[str], _
         _entry("c", _Recorder("c", log)),
     ]
     monkeypatch.setattr(extensions, "entry_points", lambda group: entries)
-    load_extensions.cache_clear()
-    extension_public_paths.cache_clear()
+    clear_extension_caches()
     yield log, b
-    load_extensions.cache_clear()
-    extension_public_paths.cache_clear()
+    clear_extension_caches()
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.extensions import extension_names
 from octop.infra.utils.url import normalize_nav_url
 
 MAX_REMOTE_BROWSER_BOOKMARKS = 12
@@ -254,7 +255,7 @@ def validate_sidebar_nav(value: Any) -> tuple[list[SidebarNavGroup], list[Sideba
         if not isinstance(raw, dict):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "invalid sidebar nav item")
         key = str(raw.get("key") or "").strip()
-        if key not in SIDEBAR_NAV_KEYS:
+        if key not in SIDEBAR_NAV_KEYS and key not in extension_names("sidebar_nav_keys"):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "unknown sidebar nav item")
         if key in seen_keys:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "duplicate sidebar nav item")

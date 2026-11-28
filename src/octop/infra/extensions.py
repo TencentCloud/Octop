@@ -19,6 +19,21 @@ Every hook is optional; Octop calls only the ones the object defines:
     A :class:`PublicPaths` of API paths that skip JWT (the route must
     authenticate on its own) and that stay open before the first user exists.
 
+Contributions to Octop's built-in registries (each optional, read once and
+cached; an extension adds entries, it never replaces a built-in one):
+
+``i18n_bundles()``
+    ``{"en": {...}, "zh": {...}}`` nested string tables merged under the
+    built-in locale bundles.
+``provider_presets()``
+    Model provider presets (same shape as the bundled ones), listed first.
+``hitl_excluded_tools()``
+    Tool names hidden from the approval picker (always run without HITL).
+``sidebar_nav_keys()``
+    Extra keys accepted in the user's sidebar layout.
+``virtual_channels()``
+    Thread channel types that are in-process, not IM outbound targets.
+
 Harness-level tools, skills, and channels keep using ``octop_harness.plugins``;
 this group is for what lives in the Octop server itself.
 """
@@ -108,6 +123,33 @@ def extension_public_paths() -> PublicPaths:
         setup_exact=tuple(setup_exact),
         setup_prefixes=tuple(setup_prefixes),
     )
+
+
+@cache
+def extension_names(hook: str) -> frozenset[str]:
+    """Union of the strings every extension returns from ``hook()``."""
+    out: set[str] = set()
+    for ext_name, fn in extension_hooks(hook):
+        for value in fn():
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"extension {ext_name!r}: {hook}() returned {value!r}")
+            out.add(value)
+    return frozenset(out)
+
+
+def extension_records(hook: str) -> list[tuple[str, Any]]:
+    """``(extension name, item)`` for every item every extension returns from ``hook()``."""
+    return [(ext_name, item) for ext_name, fn in extension_hooks(hook) for item in fn()]
+
+
+def clear_extension_caches() -> None:
+    """Forget loaded extensions and everything cached from them (tests, reloads)."""
+    load_extensions.cache_clear()
+    extension_public_paths.cache_clear()
+    extension_names.cache_clear()
+    from octop.i18n.loader import _load_all  # noqa: PLC0415
+
+    _load_all.cache_clear()
 
 
 async def run_startup_hooks(server: Any) -> tuple[str, ...]:

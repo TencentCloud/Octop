@@ -5042,6 +5042,11 @@ class AgentManager:
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
         policy = SecurityPolicy.merge(global_policy, agent_override)
+        # An agent override may list tools again that extensions keep out of HITL.
+        from octop.infra.agents.security.policy_store import without_hitl_tools  # noqa: PLC0415
+        from octop.infra.extensions import extension_names  # noqa: PLC0415
+
+        policy = without_hitl_tools(policy, extension_names("hitl_excluded_tools"))
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
