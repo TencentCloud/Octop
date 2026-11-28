@@ -2845,3 +2845,7 @@ def run_migrations(db: DatabasePool) -> None:
     _grant_bridge_permission(db)
     _expand_page_tab_permissions(db)
     _repair_connector_text_credentials(db)
+    # Extensions migrate last, against Octop's finished schema, each in its own namespace.
+    from octop.infra.db.extension_migrations import run_extension_migrations  # noqa: PLC0415
+
+    run_extension_migrations(db)
