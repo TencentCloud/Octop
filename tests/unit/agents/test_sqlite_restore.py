@@ -160,3 +160,60 @@ def test_delete_backup_permission_failure_keeps_file(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="Failed to delete"):
         delete_backup(path, backup.name, "en")
     assert backup.read_bytes() == b"keep this backup"
+
+
+def test_restore_replaces_corrupt_target_and_archives_broken_copy(tmp_path: Path) -> None:
+    path = tmp_path / "memory.sqlite"
+    create_store(path)
+    old = snapshot(path)
+    # Corrupt the active database and leave stale WAL/SHM files behind.
+    path.write_bytes(b"corrupted sqlite bytes" * 64)
+    wal = path.with_name(path.name + "-wal")
+    shm = path.with_name(path.name + "-shm")
+    wal.write_bytes(b"stale wal")
+    shm.write_bytes(b"stale shm")
+
+    report = restore_sqlite(path, "agent_a", old.name, locale="en", progress=lambda _: None)
+
+    assert report["recovered_corrupt_target"] is True
+    assert count(path) == 1
+    assert not wal.exists()
+    assert not shm.exists()
+    archived = Path(report["backup_path"])
+    assert archived.is_file()
+    assert ".corrupt-before-restore." in archived.name
+    assert archived.read_bytes() == b"corrupted sqlite bytes" * 64
+    assert archived.with_name(archived.name + "-wal").read_bytes() == b"stale wal"
+    # Archived corrupt copies must not show up as restorable backups.
+    assert all(".corrupt-before-restore." not in item["backup_id"] for item in list_backups(path))
+
+
+def test_restore_refuses_to_overwrite_healthy_foreign_target(tmp_path: Path) -> None:
+    path = tmp_path / "memory.sqlite"
+    create_store(path, "agent_a")
+    old = snapshot(path)
+    path.unlink()
+    create_store(path, "agent_b")
+    original = path.read_bytes()
+
+    with pytest.raises(ValueError, match="different expert"):
+        restore_sqlite(path, "agent_a", old.name, locale="en", progress=lambda _: None)
+    assert path.read_bytes() == original
+
+
+def test_list_and_restore_supports_pre_prune_backup(tmp_path: Path) -> None:
+    path = tmp_path / "memory.sqlite"
+    create_store(path)
+    pre_prune = path.with_name(path.name + ".pre-prune.bak")
+    with closing(sqlite3.connect(path)) as src, closing(sqlite3.connect(pre_prune)) as dest:
+        src.backup(dest)
+
+    backups = list_backups(path)
+    assert any(
+        b["backup_id"] == pre_prune.name and b["kind"] == "before_maintenance" for b in backups
+    )
+
+    path.write_bytes(b"not a valid sqlite database")
+    report = restore_sqlite(path, "agent_a", pre_prune.name, locale="en", progress=lambda _: None)
+    assert report["recovered_corrupt_target"] is True
+    assert count(path) == 1

@@ -98,7 +98,14 @@ OCTOP_PORT="${OCTOP_PORT:-8089}"
 OCTOP_LOG_LEVEL="${OCTOP_LOG_LEVEL:-info}"
 OCTOP_BIND_HOST="${OCTOP_BIND_HOST:-0.0.0.0}"
 
-mkdir -p "$OCTOP_HOME"
+if [ ! -d "$OCTOP_HOME" ]; then
+    mkdir -p "$OCTOP_HOME"
+    # On btrfs volumes (common on FnOS), disabling CoW on the new empty data
+    # directory avoids SQLite WAL write amplification and fragmentation.
+    if command -v chattr >/dev/null 2>&1; then
+        chattr +C "$OCTOP_HOME" 2>/dev/null || true
+    fi
+fi
 
 octop_cmd() {
     "$PY" -m octop.cli.main "$@"

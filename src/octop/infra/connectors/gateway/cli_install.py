@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from octop.infra.utils.host_dirs import assert_safe_host_file
+
 _INSTALL_TIMEOUT_S = 300.0
 _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+(?:[-+][\w.]+)?)")
 # fnOS / 容器里 Octop 常以非 root 用户运行，npm 全局目录（/usr/local）不可写，
@@ -317,9 +319,10 @@ def locate_obsidian_binary(explicit: str | None = None) -> str:
     ensure_cli_path()
     path = str(explicit or "").strip()
     if path:
-        if not os.path.isfile(path):
-            raise ValueError(OBSIDIAN_CLI_MISSING)
-        return path
+        try:
+            return assert_safe_host_file(path, restrict_to_home=False)
+        except ValueError as exc:
+            raise ValueError(OBSIDIAN_CLI_MISSING) from exc
     found = shutil.which("obsidian")
     if found:
         return found

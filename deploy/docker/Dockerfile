@@ -173,6 +173,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
          && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, rapidocr, onnxruntime, pymupdf; import importlib.util; assert importlib.util.find_spec('pynput')" \
          && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk; \
        fi \
+    && .venv/bin/python -c "import cubesandbox; from octop_harness.backends.cube_sandbox import CubeSandbox" \
     && if dpkg -s build-essential >/dev/null 2>&1; then \
          # 依赖层已卸掉编译器。lite 没有 apt 列表，未安装就跳过。
          apt-get purge -y --auto-remove build-essential; \

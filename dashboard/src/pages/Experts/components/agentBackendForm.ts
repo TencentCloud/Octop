@@ -18,6 +18,7 @@ export const BACKEND_POLICY_TYPES = [
   "postgres",
   "docker",
   "opensandbox",
+  "cubesandbox",
 ] as const;
 
 /** Storage kind ``shell`` is the same policy type as builtin ``local_shell``. */
@@ -45,6 +46,7 @@ const BACKEND_POLICY_LABEL_KEYS: Record<
   postgres: "storage.kindPostgres",
   docker: "storage.kindDocker",
   opensandbox: "storage.kindOpensandbox",
+  cubesandbox: "storage.kindCubesandbox",
 };
 
 export function backendPolicyTypeLabel(
@@ -78,12 +80,29 @@ export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
 
-/** Create-form default. ``composite`` stands in when ``local_shell`` is blocked. */
+const BACKEND_POLICY_TYPE_SET = new Set<string>(BACKEND_POLICY_TYPES);
+
+/**
+ * Create-form default. A user-level preferred type wins when it is allowed.
+ * ``composite`` stands in when neither that type nor ``local_shell`` is allowed.
+ */
 export function defaultCreateBackendChoice(
   allowed: readonly string[] | null | undefined,
+  preferred?: string | null,
 ): string {
   const restricted = restrictedBackendTypes(allowed);
-  if (!restricted || isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)) {
+  const requested = canonicalBackendPolicyType((preferred ?? "").trim());
+  const choice =
+    requested && BACKEND_POLICY_TYPE_SET.has(requested)
+      ? requested
+      : DEFAULT_BACKEND;
+  if (!restricted || isBackendPolicyTypeAllowed(choice, restricted)) {
+    return choice;
+  }
+  if (
+    choice !== DEFAULT_BACKEND &&
+    isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)
+  ) {
     return DEFAULT_BACKEND;
   }
   return "composite";

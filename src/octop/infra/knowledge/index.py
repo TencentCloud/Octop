@@ -35,11 +35,14 @@ class KnowledgeIndex:
         return self._path
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._path)
+        conn = sqlite3.connect(self._path)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        return conn
 
     def _initialize(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode = WAL")
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS chunks (

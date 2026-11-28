@@ -132,10 +132,27 @@ def _public_block(block: Any) -> dict[str, Any] | None:
     return None
 
 
+def _public_media_url(url: Any) -> str | None:
+    """Keep portraits that do not require a signed-in ``/api/`` fetch."""
+    if not isinstance(url, str):
+        return None
+    text = url.strip()
+    if not text or "/api/" in text:
+        return None
+    return text
+
+
+def _public_icon_name(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[:64] if text else None
+
+
 def public_conversation_messages(
     messages: list[dict[str, Any]],
     *,
-    speaker_names: dict[str, str],
+    speaker_faces: dict[str, dict[str, Any]],
     default_agent_id: str,
 ) -> list[dict[str, Any]]:
     """Keep dialogue, thinking, and tool blocks. Drop account identifiers."""
@@ -164,21 +181,34 @@ def public_conversation_messages(
             row["decision"] = decision
         if role == "user":
             author = item.get("author")
-            name = ""
             if isinstance(author, dict):
                 raw_name = author.get("display_name")
-                if isinstance(raw_name, str):
-                    name = raw_name.strip()
-            if name:
-                row["author_name"] = name[:80]
+                if isinstance(raw_name, str) and raw_name.strip():
+                    row["author_name"] = raw_name.strip()[:80]
+                icon = _public_icon_name(author.get("avatar_icon"))
+                if icon:
+                    row["author_avatar_icon"] = icon
+                avatar_url = _public_media_url(author.get("avatar_url"))
+                if avatar_url:
+                    row["author_avatar_url"] = avatar_url
         elif role == "assistant":
             raw_agent = item.get("agent_id")
             agent_key = (
                 raw_agent.strip() if isinstance(raw_agent, str) and raw_agent.strip() else ""
             )
-            speaker = speaker_names.get(agent_key) or speaker_names.get(default_agent_id) or ""
+            face = speaker_faces.get(agent_key) or speaker_faces.get(default_agent_id) or {}
+            speaker = face.get("name") if isinstance(face.get("name"), str) else ""
             if speaker:
                 row["speaker_name"] = speaker
+            icon_url = _public_media_url(face.get("icon_url"))
+            if icon_url:
+                row["speaker_icon_url"] = icon_url
+            icon_name = _public_icon_name(face.get("icon_name"))
+            if icon_name:
+                row["speaker_icon_name"] = icon_name
+            color = face.get("color")
+            if isinstance(color, str) and color.strip():
+                row["speaker_color"] = color.strip()[:32]
         out.append(row)
     return out
 
@@ -205,20 +235,32 @@ def _queue_projection(server: Any, agent_id: str, thread_id: str, user: Any) -> 
         repo.mark_projection(thread_id, "queued")
 
 
-def _speaker_names(server: Any, agent_ids: set[str]) -> dict[str, str]:
+def _speaker_faces(server: Any, agent_ids: set[str]) -> dict[str, dict[str, Any]]:
+    """Display name + public portrait fields for each speaking agent."""
     repo = getattr(getattr(server, "services", None), "agent_repo", None)
     get = getattr(repo, "get", None)
     if not callable(get):
         return {}
-    names: dict[str, str] = {}
+    faces: dict[str, dict[str, Any]] = {}
     for agent_id in agent_ids:
         if not agent_id:
             continue
         row = get(agent_id)
         name = getattr(row, "name", None)
-        if isinstance(name, str) and name.strip():
-            names[agent_id] = name.strip()
-    return names
+        if not isinstance(name, str) or not name.strip():
+            continue
+        face: dict[str, Any] = {"name": name.strip()}
+        icon_url = _public_media_url(getattr(row, "icon_url", None))
+        if icon_url:
+            face["icon_url"] = icon_url
+        icon_name = _public_icon_name(getattr(row, "icon_name", None))
+        if icon_name:
+            face["icon_name"] = icon_name
+        color = getattr(row, "color", None)
+        if isinstance(color, str) and color.strip():
+            face["color"] = color.strip()[:32]
+        faces[agent_id] = face
+    return faces
 
 
 @router.get(
@@ -329,8 +371,9 @@ async def get_public_share(
         raw_agent = item.get("agent_id")
         if isinstance(raw_agent, str) and raw_agent.strip():
             agent_ids.add(raw_agent.strip())
-    names = _speaker_names(server, agent_ids)
-    agent_name = names.get(share.agent_id, "")
+    faces = _speaker_faces(server, agent_ids)
+    agent_face = faces.get(share.agent_id) or {}
+    agent_name = agent_face.get("name") if isinstance(agent_face.get("name"), str) else ""
     title = thread.title.strip() if isinstance(thread.title, str) else ""
     return {
         "title": title,
@@ -340,7 +383,7 @@ async def get_public_share(
         "truncated": truncated,
         "messages": public_conversation_messages(
             messages,
-            speaker_names=names,
+            speaker_faces=faces,
             default_agent_id=share.agent_id,
         ),
     }

@@ -823,7 +823,7 @@ export default function AgentProfileDrawer({
       <Drawer
         open={open}
         title={profileTitle}
-        width={420}
+        width={520}
         onClose={onClose}
         destroyOnHidden
       >
@@ -833,7 +833,7 @@ export default function AgentProfileDrawer({
       <Drawer
         open={viewingFile !== null}
         title={viewingFile ? displayName(viewingFile) : ""}
-        width={480}
+        width={520}
         onClose={closeFileView}
         destroyOnHidden
       >

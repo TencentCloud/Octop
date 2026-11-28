@@ -1008,6 +1008,16 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_keeps_opt_in_skills_off(manager: AgentManager) -> None:
+    default = manager._build_harness_config(_row(agent_id="AGT001"))
+    assert "office-documents" in default.skills_disabled
+
+    opted = manager._build_harness_config(
+        _row(agent_id="AGT001", config_json=json.dumps({"skills_enabled": ["office-documents"]}))
+    )
+    assert "office-documents" not in opted.skills_disabled
+
+
 def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
     from octop.infra.agents.middleware.mcp_output_schema import (
         McpOutputSchemaMiddleware,
@@ -1662,13 +1672,18 @@ async def test_delete_stops_memory_maintenance_before_close(manager: AgentManage
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_persisted_workspace_dir(
+async def test_delete_keeps_caller_workspace_and_removes_managed_dirs(
     manager: AgentManager, tmp_path: Path
 ) -> None:
+    """A workspace the caller chose stays; directories Octop allocated are removed."""
     agent_id = "AGT_DELETE_CUSTOM"
     custom = tmp_path / "custom-ws"
     custom.mkdir()
     (custom / "SOUL.md").write_text("keep", encoding="utf-8")
+    managed = manager._paths.ensure_agent_workspace(agent_id)
+    (managed / "MEMORY.md").write_text("managed", encoding="utf-8")
+    scoped = manager._paths.root / "workspaces" / agent_id
+    scoped.mkdir(parents=True)
     manager._repos.agent_repo.create(
         agent_id=agent_id,
         user_id=None,
@@ -1682,7 +1697,9 @@ async def test_delete_removes_persisted_workspace_dir(
     await manager.delete(agent_id)
 
     assert manager.get_row(agent_id) is None
-    assert not custom.exists()
+    assert (custom / "SOUL.md").read_text(encoding="utf-8") == "keep"
+    assert not managed.exists()
+    assert not scoped.exists()
 
 
 @pytest.mark.asyncio
@@ -1730,6 +1747,26 @@ def test_build_harness_config_respects_config_json_backend(manager: AgentManager
         _row(config_json=json.dumps({"backend": custom})),
     )
     assert cfg.backend == custom
+
+
+def test_cube_spec_uses_persisted_owner_and_host_connection_settings(manager: AgentManager) -> None:
+    row = _row(agent_id="cube-agent")
+    spec = {
+        "type": "cubesandbox",
+        "template": "workspace",
+        "octop_user": "another-user",
+        "octop_agent": "another-agent",
+        "api_url": "https://untrusted.example",
+        "api_key": "untrusted",
+        "lock_dsn": "untrusted",
+    }
+
+    assert manager._prepare_cube_backend(spec, row) == {
+        "type": "cubesandbox",
+        "template": "workspace",
+        "octop_user": "1",
+        "octop_agent": "cube-agent",
+    }
 
 
 def test_backend_spec_for_row_neutralizes_host_root_on_windows(

@@ -36,6 +36,40 @@ async def test_feature_toggle_requires_knowledge_settings(env: Any) -> None:
     assert allowed.json()["feature_enabled"] is False
 
 
+async def test_advanced_settings_permission_round_trip_and_validation(env: Any) -> None:
+    client, _server, admin_auth = env
+    base = "/api/knowledge-bases"
+    payload = {
+        "chunk_size": 1000,
+        "chunk_overlap": 0,
+        "retrieval_k": 5,
+        "context_char_budget": 4000,
+    }
+    page_auth = await create_user(client, admin_auth, username="kb_advanced_reader")
+    settings_auth = await create_user(
+        client, admin_auth, username="kb_advanced_editor", permissions=["knowledge_settings"]
+    )
+    denied = await client.put(f"{base}/advanced-settings", headers=page_auth, json=payload)
+    assert denied.status_code == 403, denied.text
+    saved = await client.put(f"{base}/advanced-settings", headers=settings_auth, json=payload)
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == payload
+
+    for invalid in ({"chunk_overlap": 1200}, {"retrieval_k": 21}, {"chunk_size": 800.5}):
+        rejected = await client.put(
+            f"{base}/advanced-settings",
+            headers=settings_auth,
+            json={**payload, "chunk_size": 1200, **invalid},
+        )
+        assert rejected.status_code == 422, rejected.text
+
+    capability = await client.get(f"{base}/capability", headers=settings_auth)
+    assert capability.status_code == 200, capability.text
+    data = capability.json()
+    assert not data["feature_enabled"]
+    assert {key: data[key] for key in payload} == payload
+
+
 async def test_embedding_options_require_knowledge_settings(env: Any) -> None:
     client, _server, admin_auth = env
     page_auth = await create_user(client, admin_auth, username="kb_options_user")

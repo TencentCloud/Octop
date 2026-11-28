@@ -310,7 +310,7 @@ export function StorageBrowseDrawer({
       open={open}
       onClose={onClose}
       destroyOnHidden
-      width={480}
+      width={520}
       extra={
         <button
           type="button"

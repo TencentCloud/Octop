@@ -244,3 +244,158 @@
 .backupPath {
   overflow-wrap: anywhere;
 }
+
+/* 接入端开关：固定占位宽度，避免在 grid 里被压缩或撑开列宽 */
+.clientSwitch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 44px;
+  max-width: 44px;
+  overflow: hidden;
+}
+
+.codexSettings,
+.codexField {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.codexSettings {
+  padding-top: 8px;
+  gap: 16px;
+}
+
+.codexToken {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.codexSelect {
+  width: 100%;
+}
+
+.codexConfigure,
+.codexCopy {
+  align-self: flex-start;
+}
+
+.codexConfigure {
+  padding-inline: 0;
+}
+
+.codexInstructions {
+  color: var(--fn-text-secondary);
+
+  summary {
+    cursor: pointer;
+    width: fit-content;
+  }
+
+  textarea {
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+}
+
+.codexStatus {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #d9d9d9);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.codexStatusHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.codexLastRun {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--ant-color-border-secondary, #d9d9d9);
+}
+
+.overrideHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inheritSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed var(--fn-border-primary);
+  border-radius: 10px;
+  background: var(
+    --fn-bg-subtle,
+    color-mix(in srgb, var(--fn-bg-elevated) 60%, transparent)
+  );
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.inheritRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inheritRuleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inheritRuleLabel {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.inheritRuleText {
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ruleField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ruleFieldLabel {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ruleFieldHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.customControlsRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

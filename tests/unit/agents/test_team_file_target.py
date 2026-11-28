@@ -17,11 +17,16 @@ from octop.infra.agents.acp.team_workspace_mcp import (
 from octop.infra.agents.acp.turn import attach_managed_turn
 from octop.infra.agents.middleware.team_file_target import TeamFileTargetMiddleware
 from octop.infra.agents.teams.file_target import (
+    BRIDGE_TARGET_KEY,
     CAPABILITIES_KEY,
     DIR_KEY,
     EXECUTE_KEY,
     HOST_KEY,
+    MEMBER_KEY,
+    MOUNTS_KEY,
     activate_file_target,
+    bind_turn_file_target,
+    deepagents_directories,
     file_target_opt_out,
     install_file_redirect,
     reset_file_target,
@@ -165,6 +170,148 @@ def test_runner_write_is_denied_and_not_reported_as_the_selected_directory() -> 
         assert adapter.is_hard_blocked(write) is False
 
 
+def test_runner_shell_stays_on_the_initiator_after_the_prompt_context_ends() -> None:
+    """The runner permission loop does not share the turn's LangGraph config."""
+    from octop_harness.acp.client import ACPHostedClient
+    from octop_harness.acp.models import ACPRunnerConfig
+    from octop_harness.acp.permissions import ACPPermissionAdapter
+
+    client = ACPHostedClient(
+        runner_name="codebuddy",
+        runner_config=ACPRunnerConfig(),
+        cwd="/tmp/runner",
+    )
+    shell = {"kind": "other", "title": "Run command", "rawInput": {"command": "pwd"}}
+    local = {
+        "kind": "execute",
+        "title": "octop-team-workspace execute",
+        "rawInput": {"command": "pwd"},
+    }
+    stamped = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            "locale": "zh",
+        }
+    }
+    request = {"configurable": stamped["configurable"]}
+    with (
+        bind_turn_file_target(request),
+        patch(
+            "octop.infra.agents.teams.file_target_guard.get_config",
+            return_value=stamped,
+        ),
+    ):
+        client.start_prompt(lambda *_args: None)
+    with patch(
+        "octop.infra.agents.teams.file_target_guard.get_config",
+        return_value={"configurable": {}},
+    ):
+        adapter = client._permission_adapter
+        assert isinstance(adapter, ACPPermissionAdapter)
+        assert adapter.is_hard_blocked(shell) is True
+        assert adapter.is_hard_blocked(local) is False
+
+
+@pytest.mark.asyncio
+async def test_bound_runner_shell_is_denied_without_waiting_for_a_card() -> None:
+    """A managed runner never shows the permission card, so waiting hangs the turn."""
+    import asyncio
+
+    from octop_harness.acp.client import ACPHostedClient
+    from octop_harness.acp.models import ACPRunnerConfig
+
+    client = ACPHostedClient(
+        runner_name="codebuddy",
+        runner_config=ACPRunnerConfig(),
+        cwd="/tmp/runner",
+    )
+    shell = {"kind": "other", "title": "Run command", "rawInput": {"command": "pwd"}}
+    stamped = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            "locale": "zh",
+        }
+    }
+
+    async def drop_directory_and_wait(_payload: dict[str, Any], _is_last: bool) -> None:
+        client._octop_target_directory = ""
+        adapter = client._permission_adapter
+        adapter._octop_target_directory = ""
+        await asyncio.Event().wait()
+
+    with (
+        bind_turn_file_target({"configurable": stamped["configurable"]}),
+        patch(
+            "octop.infra.agents.teams.file_target_guard.get_config",
+            return_value=stamped,
+        ),
+    ):
+        client.start_prompt(drop_directory_and_wait)
+    with patch(
+        "octop.infra.agents.teams.file_target_guard.get_config",
+        return_value={"configurable": {}},
+    ):
+        denied = await asyncio.wait_for(client.request_permission([], "sess", shell), timeout=1)
+    assert getattr(denied.outcome, "outcome", None) == "cancelled"
+    assert client._permission_future is None
+
+
+@pytest.mark.asyncio
+async def test_execute_follows_the_turn_directory_when_tool_config_drops_it() -> None:
+    clear_local_workspace_state()
+    seen: list[dict[str, Any]] = []
+    target = SimpleNamespace(
+        bridge_file_target=True,
+        token="tok",
+        directory="/data",
+        execute=True,
+    )
+
+    async def call_text(op: str, args: dict[str, Any]) -> str:
+        seen.append({"op": op, "args": args})
+        return "pwd\n[exit code 0]"
+
+    target.call_text = call_text
+    register_peer_target("tok", session=object(), directory="/data", execute=True)
+    replace_peer_target("tok", target)
+    mw = TeamFileTargetMiddleware(
+        agent_id="child",
+        lookup=lambda _agent_id: SimpleNamespace(backend=object(), workspace=object()),
+    )
+
+    async def handler(request: Any) -> str:
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
+
+    request = _request("execute", {"command": "pwd"})
+    request.override = lambda **kwargs: SimpleNamespace(
+        tool=kwargs["tool"], tool_call=kwargs.get("tool_call", request.tool_call)
+    )
+    payload = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            CAPABILITIES_KEY: {"file": True, "execute": True},
+        }
+    }
+    with (
+        bind_turn_file_target(payload),
+        patch(
+            "octop.infra.agents.middleware.team_file_target.get_config",
+            return_value={"configurable": {"thread_id": "thr"}},
+        ),
+    ):
+        result = await mw.awrap_tool_call(request, handler)
+    assert result == "pwd\n[exit code 0]"
+    assert seen == [{"op": "execute", "args": {"command": "pwd"}}]
+    clear_local_workspace_state()
+
+
 def test_workspace_relative_resolves_against_the_target_directory() -> None:
     assert workspace_relative("notes.md", "/host/ws") == "notes.md"
     assert workspace_relative("/host/ws/a.md", "/host/ws") == "a.md"
@@ -194,7 +341,8 @@ async def test_file_tool_reads_the_host_workspace_not_the_member_path() -> None:
     )
 
     async def handler(request: Any) -> str:
-        return str(await request.tool.ainvoke(request.tool_call))
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
 
     request = _request("read_file", {"file_path": "notes.md"})
     request.override = lambda **kwargs: SimpleNamespace(
@@ -217,7 +365,8 @@ async def test_execute_uses_the_host_shell_and_skips_the_member_tool() -> None:
     mw = _middleware(member, host)
 
     async def handler(request: Any) -> str:
-        return str(await request.tool.ainvoke(request.tool_call))
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
 
     config = {"configurable": {HOST_KEY: "host", DIR_KEY: "/host/ws", EXECUTE_KEY: "1"}}
     with patch(
@@ -230,6 +379,16 @@ async def test_execute_uses_the_host_shell_and_skips_the_member_tool() -> None:
         )
         result = await mw.awrap_tool_call(request, handler)
     assert result == "pwd\n[exit code 0]"
+
+
+def test_unbound_turn_keeps_its_own_execute_tool() -> None:
+    mw = _middleware(_Disk("member"), None)
+    req = SimpleNamespace(tools=[{"type": "function", "function": {"name": "execute"}}])
+    with patch(
+        "octop.infra.agents.middleware.team_file_target.get_config",
+        return_value={"configurable": {}},
+    ):
+        assert mw._prepare_tools(req) is req
 
 
 def test_execute_is_hidden_and_file_tools_name_the_host_directory() -> None:
@@ -373,7 +532,8 @@ async def test_bridge_file_tool_calls_the_peer_target_not_the_member() -> None:
     )
 
     async def handler(request: Any) -> str:
-        return str(await request.tool.ainvoke(request.tool_call))
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
 
     request = _request("read_file", {"file_path": "notes.md"})
     request.override = lambda **kwargs: SimpleNamespace(
@@ -540,3 +700,223 @@ async def test_workspace_mcp_sends_a_file_from_the_target_directory(tmp_path: Pa
     assert sent["result"]["isError"] is False
     assert "octop_delivery" in text
     assert "report.txt" in text
+
+
+class _Recording:
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.reads: list[str] = []
+        self.writes: list[str] = []
+
+    async def aread_text(self, path: str, *, limit: int = 10_000_000) -> str:
+        del limit
+        self.reads.append(path)
+        return f"{self.label}:{path}"
+
+    async def awrite_text(self, path: str, content: str, *, force: bool = False) -> None:
+        del content, force
+        self.writes.append(path)
+
+
+def _mounted_middleware(member: _Recording, host: _Recording) -> TeamFileTargetMiddleware:
+    child = SimpleNamespace(backend=object(), workspace=member)
+    host_agent = SimpleNamespace(backend=object(), workspace=host)
+    return TeamFileTargetMiddleware(
+        agent_id="child",
+        lookup=lambda agent_id: child if agent_id == "child" else host_agent,
+    )
+
+
+@pytest.mark.asyncio
+async def test_mounted_deepagents_path_is_read_from_the_member() -> None:
+    member = _Recording("member")
+    host = _Recording("host")
+    mw = _mounted_middleware(member, host)
+    skill = "/member/ws/.octop/_builtin_skills"
+
+    async def handler(request: Any) -> str:
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
+
+    request = _request("read_file", {"file_path": f"{skill}/demo/SKILL.md"})
+    request.override = lambda **kwargs: SimpleNamespace(
+        tool=kwargs["tool"], tool_call=kwargs.get("tool_call", request.tool_call)
+    )
+    config = {
+        "configurable": {
+            HOST_KEY: "host",
+            DIR_KEY: "/host/ws",
+            MOUNTS_KEY: [skill, "/member/ws/.octop/agents"],
+        }
+    }
+    with patch(
+        "octop.infra.agents.middleware.team_file_target.get_config",
+        return_value=config,
+    ):
+        result = await mw.awrap_tool_call(request, handler)
+    assert result == f"member:{skill}/demo/SKILL.md"
+    assert member.reads == [f"{skill}/demo/SKILL.md"]
+    assert host.reads == []
+
+
+@pytest.mark.asyncio
+async def test_mounted_directory_rejects_writes_and_host_paths_stay_on_the_host() -> None:
+    member = _Recording("member")
+    host = _Recording("host")
+    mw = _mounted_middleware(member, host)
+    skill = "/member/ws/.octop/_builtin_skills"
+    config = {
+        "configurable": {
+            HOST_KEY: "host",
+            DIR_KEY: "/host/ws",
+            MOUNTS_KEY: [skill],
+        }
+    }
+
+    async def handler(request: Any) -> str:
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
+
+    denied = _request("write_file", {"file_path": f"{skill}/demo/SKILL.md", "content": "x"})
+    notes = _request("read_file", {"file_path": "notes.md"})
+    notes.override = lambda **kwargs: SimpleNamespace(
+        tool=kwargs["tool"], tool_call=kwargs.get("tool_call", notes.tool_call)
+    )
+    with patch(
+        "octop.infra.agents.middleware.team_file_target.get_config",
+        return_value=config,
+    ):
+        blocked = await mw.awrap_tool_call(denied, handler)
+        read = await mw.awrap_tool_call(notes, handler)
+    assert getattr(blocked, "status", None) == "error"
+    assert "read-only" in str(blocked.content)
+    assert member.writes == []
+    assert read == "host:notes.md"
+    assert host.reads == ["notes.md"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_mcp_reads_a_mounted_path_from_the_member() -> None:
+    member = _Recording("member")
+    host = _Recording("host")
+    skill = "/member/ws/.octop/agents"
+    scope = TeamWorkspaceScope(
+        host_agent_id="host",
+        directory="/host/ws",
+        execute=False,
+        member_agent_id="child",
+        mounts=(skill,),
+    )
+    read = await handle_team_workspace_mcp(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "read_file", "arguments": {"file_path": f"{skill}/helper.md"}},
+        },
+        scope=scope,
+        workspace=host,
+        backend=object(),
+        member_workspace=member,
+        member_backend=object(),
+    )
+    assert read["result"]["isError"] is False
+    assert read["result"]["content"][0]["text"] == f"member:{skill}/helper.md"
+    denied = await handle_team_workspace_mcp(
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "write_file",
+                "arguments": {"file_path": f"{skill}/helper.md", "content": "no"},
+            },
+        },
+        scope=scope,
+        workspace=host,
+        backend=object(),
+        member_workspace=member,
+        member_backend=object(),
+    )
+    assert denied["result"]["isError"] is True
+    assert member.writes == []
+
+
+def test_deepagents_directories_uses_skill_paths_and_subagent_roots() -> None:
+    seen: dict[str, Any] = {}
+
+    def skill_paths(*, extra: Any = None) -> list[str]:
+        seen["skills_extra"] = extra
+        return ["/member/.octop/_builtin_skills", "/member/skills"]
+
+    def source(path: str) -> str:
+        seen.setdefault("sources", []).append(path)
+        return f"/member/{path}"
+
+    workspace = SimpleNamespace(skill_paths=skill_paths, _deepagents_source_path=source)
+    agent = SimpleNamespace(
+        workspace=workspace,
+        config=SimpleNamespace(skills_dir=["/packages/ppt"], subagents_path="/extra/agents"),
+    )
+    with patch(
+        "octop_harness.subagents.loader.agent_scan_roots",
+        return_value=["agents", ".octop/agents"],
+    ):
+        mounts = deepagents_directories(agent)
+    assert mounts == [
+        "/member/.octop/_builtin_skills",
+        "/member/skills",
+        "/member/agents",
+        "/member/.octop/agents",
+    ]
+    assert seen["skills_extra"] == ["/packages/ppt"]
+
+
+@pytest.mark.asyncio
+async def test_bind_stamps_member_deepagents_directories() -> None:
+    clear_local_workspace_state()
+    host = SimpleNamespace(
+        config=SimpleNamespace(workspace_dir="/host/ws"),
+        backend=object(),
+    )
+    child = SimpleNamespace(
+        workspace=SimpleNamespace(skill_paths=lambda *, extra=None: ["/child/skills"]),
+        config=SimpleNamespace(skills_dir=None, subagents_path=None),
+    )
+
+    class _Registry:
+        def get_thread(self, thread_id: str) -> Any:
+            return SimpleNamespace(agent_id="host")
+
+    class _Agents:
+        def get_row(self, agent_id: str) -> SimpleNamespace:
+            kind = "team" if agent_id == "host" else "expert"
+            return SimpleNamespace(kind=kind, agent_id=agent_id)
+
+        def get_agent(self, agent_id: str) -> Any:
+            return host if agent_id == "host" else child
+
+    team = SimpleNamespace(
+        _thread_registry=_Registry(),
+        _agent_manager=_Agents(),
+        _team_room_id=lambda thread_id, speaker: TeamManager._team_room_id(
+            team, thread_id, speaker
+        ),
+        _last_room_user_text=_async_text(""),
+        _locale_for=lambda _user_id: "zh",
+        _payload_user_id=lambda _payload, _room: 1,
+    )
+    payload: dict[str, Any] = {
+        "thread_id": "room~child",
+        "messages": [SimpleNamespace(content="整理报告")],
+        "configurable": {},
+    }
+    with patch(
+        "octop_harness.subagents.loader.agent_scan_roots",
+        return_value=[],
+    ):
+        await TeamManager._bind_team_file_target(team, payload, "child", "room~child")
+    cfg = payload["configurable"]
+    assert cfg[MOUNTS_KEY] == ["/child/skills"]
+    assert cfg[MEMBER_KEY] == "child"
+    assert "/child/skills" in cfg["octop_team_dispatch_briefing"]

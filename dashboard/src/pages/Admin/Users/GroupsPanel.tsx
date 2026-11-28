@@ -741,7 +741,7 @@ export default function GroupsPanel() {
         }
         open={open}
         onClose={() => setOpen(false)}
-        width={480}
+        width={520}
         destroyOnHidden
         className={styles.createUserDrawer}
         styles={{ body: { paddingTop: 12, paddingBottom: 24 } }}

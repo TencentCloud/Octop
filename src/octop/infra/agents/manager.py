@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import threading
@@ -18,7 +19,9 @@ from typing import TYPE_CHECKING, Any, cast
 from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
+from octop_memory import MemoryService
 
+from octop.i18n import tr
 from octop.i18n.domains.agents import (
     AGENT_START_TIMEOUT,
     NO_MODELS_CONFIGURED,
@@ -32,8 +35,10 @@ from octop.infra.agents.acp import (
 )
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
+from octop.infra.agents.memory_shared_access import shared_memory_tools
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -41,7 +46,16 @@ from octop.infra.agents.security.hitl_session import (
     hitl_thread_scope,
     thread_id_from_request,
 )
-from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.acp import ACPSettingsStore, runtime_acp_config
+from octop.infra.agents.settings.cls_observability import (
+    ClsAgentApplication,
+    ClsObservabilitySettings,
+    ClsObservabilitySettingsStore,
+    env_cls_enabled,
+    env_cls_harness_config,
+    env_cls_settings,
+    probe_env_cls_connection,
+)
 from octop.infra.agents.settings.compaction import (
     COMPACTION_CONFIG_KEY,
     apply_compaction_update,
@@ -53,6 +67,14 @@ from octop.infra.agents.settings.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
+)
+from octop.infra.agents.settings.memory_defaults import (
+    GlobalMemoryDefaults,
+    infer_aux_model_mode,
+    infer_extract_rules_mode,
+    load_global_memory_defaults,
+    resolve_effective_memory_defaults,
+    save_global_memory_defaults,
 )
 from octop.infra.agents.settings.profile import (
     dump_id_list,
@@ -160,25 +182,33 @@ _PROVIDER_RELOAD_CONCURRENCY = 6
 # One hung remote backend must not block ``octop run`` from serving HTTP.
 _AGENT_BOOT_START_TIMEOUT = 60.0
 
-# octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
-# must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
-_MEMORY_NS_PREFIX = "agent_"
-
 _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
 
-def _memory_namespace(agent_id: str) -> str:
-    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+def _reject_shared_memory_namespace(rows: list[Any], agent_id: str) -> None:
+    """Refuse an id whose normalized memory name is already in use."""
+    from octop.infra.agents.memory.thread_cleanup import memory_namespace
+
+    target = memory_namespace(agent_id)
+    for row in rows:
+        other = str(row.agent_id)
+        if other != agent_id and memory_namespace(other) == target:
+            raise OctopError(
+                ErrorCode.AGENT_ID_TAKEN,
+                f"agent id {agent_id!r} collides with an existing agent",
+            )
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
-    """Return the set of disabled skill slugs from agent config."""
-    raw = cfg.get("skills_disabled")
-    if isinstance(raw, list):
-        return {str(x) for x in raw}
-    return set()
+    """Return the set of disabled skill slugs from agent config.
+
+    Opt-in built-ins count as disabled until the agent's ``skills_enabled`` lists them.
+    """
+    from octop.infra.agents.builtin_skills import effective_skills_disabled  # noqa: PLC0415
+
+    return effective_skills_disabled(cfg)
 
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -211,25 +241,24 @@ def _stored_id_list(value: Any) -> list[str]:
 
 
 def _memory_aux_model_settings(
-    mem: dict[str, Any],
+    effective_aux_model: str | None,
     supported_fields: frozenset[str],
     is_ref_usable: Callable[[str], bool] | None,
 ) -> dict[str, Any]:
-    """Map the ``memory.aux_model`` ref onto both harness extraction tiers.
+    """Map the effective ``aux_model`` ref onto both harness extraction tiers.
 
     A stale ref (provider deleted / model disabled since it was saved) is
     dropped with a warning so extraction falls back to the default model
     instead of failing at call time.
     """
-    aux_model = mem.get("aux_model")
     if (
-        not isinstance(aux_model, str)
-        or not aux_model.strip()
+        not isinstance(effective_aux_model, str)
+        or not effective_aux_model.strip()
         or "memory_aux_light_model" not in supported_fields
         or "memory_aux_heavy_model" not in supported_fields
     ):
         return {}
-    ref = aux_model.strip()
+    ref = effective_aux_model.strip()
     if is_ref_usable is not None and not is_ref_usable(ref):
         logger.warning(
             "memory aux_model %r no longer usable; falling back to the default model",
@@ -238,6 +267,12 @@ def _memory_aux_model_settings(
         return {}
     # One user-chosen model drives both extraction tiers.
     return {"memory_aux_light_model": ref, "memory_aux_heavy_model": ref}
+
+
+def _supports_memory_extract_rules(supported_fields: frozenset[str]) -> bool:
+    return {"memory_extract_keep_rules", "memory_extract_skip_rules"} <= supported_fields and bool(
+        getattr(MemoryService, "supports_extraction_rules", False)
+    )
 
 
 def memory_extract_supported_options() -> list[str]:
@@ -253,7 +288,10 @@ def memory_extract_supported_options() -> list[str]:
         "extract_max_retries": "memory_aux_max_retries",
         "extract_retry_backoff_s": "memory_aux_retry_backoff_s",
     }
-    return [key for key, field in fields.items() if field in _HARNESS_AGENT_CONFIG_FIELDS]
+    supported = [key for key, field in fields.items() if field in _HARNESS_AGENT_CONFIG_FIELDS]
+    if _supports_memory_extract_rules(_HARNESS_AGENT_CONFIG_FIELDS):
+        supported.append("extract_rules")
+    return supported
 
 
 def _memory_extract_settings(
@@ -261,18 +299,43 @@ def _memory_extract_settings(
     *,
     supported_fields: frozenset[str] = _HARNESS_AGENT_CONFIG_FIELDS,
     is_ref_usable: Callable[[str], bool] | None = None,
+    reasoning_for_ref: Callable[[str], dict[str, Any] | None] | None = None,
+    global_defaults: GlobalMemoryDefaults | None = None,
 ) -> dict[str, Any]:
     """Extract the ``memory`` config section into HarnessAgentConfig kwargs.
 
     Mirrors the shape written by the dashboard's ``PUT .../memory/extract-config``
-    endpoint. Only recognized keys are forwarded; anything missing falls through
-    to HarnessAgentConfig's own defaults, so an agent with no ``memory`` section
-    behaves exactly as before.
+    endpoint, overlaid onto *global_defaults* for inherited fields. Only
+    recognized keys are forwarded; anything missing falls through to
+    HarnessAgentConfig's own defaults, so an agent with no ``memory`` section
+    and empty global defaults behaves exactly as before.
     """
-    mem = cfg.get("memory")
-    if not isinstance(mem, dict):
-        return {}
-    out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
+    raw_mem = cfg.get("memory")
+    mem = raw_mem if isinstance(raw_mem, dict) else {}
+    effective = resolve_effective_memory_defaults(mem, global_defaults)
+    out: dict[str, Any] = _memory_aux_model_settings(
+        effective.effective_aux_model, supported_fields, is_ref_usable
+    )
+    ref = out.get("memory_aux_light_model")
+    if (
+        ref
+        and reasoning_for_ref is not None
+        and "memory_aux_extra_body" in supported_fields
+        and mem.get("extract_thinking", "auto") in ("auto", "off")
+    ):
+        capability = reasoning_for_ref(ref)
+        if capability and capability.get("toggle"):
+            # Models such as HY4 can spend the entire extraction budget on thinking.
+            options = reasoning_request_parameters(capability, mode="disabled", effort=None)
+            if provider_body := options.get("extra_body"):
+                out["memory_aux_extra_body"] = provider_body
+    if _supports_memory_extract_rules(supported_fields):
+        if effective.effective_keep_rules:
+            out["memory_extract_keep_rules"] = effective.effective_keep_rules
+        if effective.effective_skip_rules:
+            out["memory_extract_skip_rules"] = effective.effective_skip_rules
+    if not mem:
+        return out
     for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
         if key in supported_fields and isinstance(mem.get(key), bool):
             out[key] = mem[key]
@@ -335,15 +398,14 @@ def _memory_extract_settings(
         ):
             out[dst] = value
     extra_body = mem.get("extract_extra_body")
-    aux_model = mem.get("aux_model")
-    has_aux_override = isinstance(aux_model, str) and bool(aux_model.strip())
+    has_aux_override = bool(effective.effective_aux_model)
     if (
         "memory_aux_extra_body" in supported_fields
         and isinstance(extra_body, dict)
         and extra_body
         and (not has_aux_override or "memory_aux_light_model" in out)
     ):
-        out["memory_aux_extra_body"] = dict(extra_body)
+        out["memory_aux_extra_body"] = {**out.get("memory_aux_extra_body", {}), **extra_body}
 
     # octop-harness 0.9.5 predates the interval trigger fields. Keep
     # hot reload working against that release and approximate interval mode
@@ -575,6 +637,8 @@ class AgentManager:
         # one thread interleave LangGraph checkpoint writes.
         self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
+        # Background workspace archives of CubeSandbox turns (one task per agent).
+        self._archive_tasks: dict[str, asyncio.Task[None]] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
         # Agents whose SQLite file should be rebuilt once they are idle.
@@ -592,6 +656,10 @@ class AgentManager:
         # Chat user id used to resolve connectors when agent.user_id is NULL (shared agents).
         self._connector_user_override: dict[str, int] = {}
         self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._cls_observability = ClsObservabilitySettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -632,6 +700,10 @@ class AgentManager:
         self._repos = repos
         self._config = config
         self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._cls_observability = ClsObservabilitySettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -686,7 +758,7 @@ class AgentManager:
         providers = self._providers.build_harness_configs()
         self._harness_manager = HarnessAgentManager(
             providers=providers,
-            langfuse=self._langfuse.harness_config(),
+            langfuse=self._resolve_observability_harness_config(),
             team_processor=self._team_processor,
             file_logging=False,
         )
@@ -806,6 +878,55 @@ class AgentManager:
         return self._langfuse
 
     @property
+    def cls_observability(self) -> ClsObservabilitySettingsStore:
+        return self._cls_observability
+
+    def active_observability_backend(self) -> str:
+        """Return which tracing backend is currently active: cls | langfuse | cls_env | none."""
+        if self._cls_observability.load().configured:
+            return "cls"
+        if self._langfuse.load().configured:
+            return "langfuse"
+        if env_cls_enabled():
+            return "cls_env"
+        return "none"
+
+    def effective_cls_settings(self) -> tuple[str, ClsObservabilitySettings]:
+        backend = self.active_observability_backend()
+        if backend == "cls_env":
+            return backend, env_cls_settings()
+        return backend, self._cls_observability.load()
+
+    async def test_effective_cls_connection(self, locale: str) -> dict[str, Any]:
+        backend, cfg = self.effective_cls_settings()
+        if not cfg.can_probe:
+            key = "environment_incomplete" if backend == "cls_env" else "saved_incomplete"
+            return {
+                "ok": False,
+                "api_ok": None,
+                "otlp_ok": None,
+                "error": tr(f"cls_cli.{key}", locale),
+            }
+        if backend == "cls_env":
+            return await probe_env_cls_connection(cfg)
+        return await self._cls_observability.test_connection()
+
+    def _resolve_observability_harness_config(self) -> Any | None:
+        cls_cfg = self._cls_observability.harness_config()
+        if cls_cfg is not None:
+            return cls_cfg
+        if self._langfuse.load().configured:
+            return self._langfuse.harness_config()
+        env_cfg = env_cls_harness_config()
+        if env_cfg is not None:
+            return env_cfg
+        return self._langfuse.harness_config()
+
+    def _sync_observability_to_harness(self) -> None:
+        if self._harness_manager is not None:
+            self._harness_manager.set_langfuse(self._resolve_observability_harness_config())
+
+    @property
     def decision(self) -> DecisionSettingsStore:
         return self._decision
 
@@ -816,6 +937,14 @@ class AgentManager:
     @property
     def paths(self) -> PathLayout:
         return self._paths
+
+    def _runtime_memory_namespace(self, agent_id: str) -> str:
+        from octop.infra.agents.memory.thread_cleanup import runtime_memory_namespace_for
+
+        return runtime_memory_namespace_for(
+            agent_id,
+            self._repos.agent_repo.list_all(include_disabled=True),
+        )
 
     @property
     def harness_manager(self) -> HarnessAgentManager | None:
@@ -854,6 +983,10 @@ class AgentManager:
                         break
                 else:
                     raise RuntimeError("failed to allocate unique agent_id")
+            _reject_shared_memory_namespace(
+                self._repos.agent_repo.list_all(include_disabled=True),
+                agent_id,
+            )
             runtime_config = dict(spec.runtime_config)
             compaction_set = COMPACTION_CONFIG_KEY in runtime_config
             compaction_value = runtime_config.pop(COMPACTION_CONFIG_KEY, None)
@@ -867,6 +1000,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_default_backend_type,
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
@@ -889,6 +1023,8 @@ class AgentManager:
                 if not isinstance(raw_workspace, str) or not raw_workspace.strip():
                     config["workspace_dir"] = managed_default_workspace(agent_id)
                 require_managed_fields(config)
+            elif spec.user_id is not None:
+                apply_default_backend_type(self._repos.user_policy_repo, spec.user_id, config)
             if spec.user_id is not None:
                 if kind != "team":
                     assert_agent_quota_available(
@@ -1079,6 +1215,7 @@ class AgentManager:
                     octop_config=self._config,
                     workspace_dir=workspace_dir,
                     paths=self._paths,
+                    namespace=self._runtime_memory_namespace(agent_id),
                 )
                 from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
 
@@ -1086,7 +1223,12 @@ class AgentManager:
                     remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
                 )
             elif await asyncio.to_thread(workspace_dir.exists):
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+                managed = {
+                    self._paths.agent_workspace(agent_id).resolve(),
+                    (self._paths.root / "workspaces" / agent_id).resolve(),
+                }
+                if workspace_dir.resolve() in managed:
+                    await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("abort team create: rmtree failed for %s", agent_id)
         except Exception:
@@ -1278,6 +1420,7 @@ class AgentManager:
         )
         from octop.infra.agents.teams import is_team_agent
 
+        cfg = agent_config_from_row(row)
         affected_teams: list[str] = []
         thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
         workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
@@ -1289,9 +1432,13 @@ class AgentManager:
                     logger.exception("failed to drop deleted expert %s from team rosters", agent_id)
             await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+            cube = self._agent_cube_spec(cfg.get("backend"))
+            if cube is not None:
+                await asyncio.to_thread(
+                    self._destroy_agent_cube_sandbox, self._prepare_cube_backend(cube, row)
+                )
         self._bootstrap_known.pop(agent_id, None)
         self._plugin_tool_labels.pop(agent_id, None)
-        cfg = agent_config_from_row(row)
         await asyncio.to_thread(
             delete_agent_memory_and_checkpoints,
             agent_id=agent_id,
@@ -1300,6 +1447,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace_dir,
             paths=self._paths,
+            namespace=self._runtime_memory_namespace(agent_id),
         )
         try:
             from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
@@ -2068,6 +2216,46 @@ class AgentManager:
             self._active_invocations.pop(agent_id, None)
             if agent_id in self._reclaim_pending:
                 self._ensure_reclaim_task()
+            # A sandbox only keeps its workspace in the writable layer; mirror it
+            # after the turn so a rebuild on another node can restore it.
+            self._schedule_workspace_archive(agent_id)
+
+    def _schedule_workspace_archive(self, agent_id: str) -> None:
+        """Archive a CubeSandbox workspace in the background, at most one per agent.
+
+        Runs after the turn is fully accounted for, so it never delays the reply.
+        Backends without ``archive_workspace`` (local, docker, filesystem) are
+        skipped silently.
+        """
+        if agent_id in self._archive_tasks:
+            return
+        archive = self._workspace_archiver(agent_id)
+        if archive is None:
+            return
+
+        async def _run() -> None:
+            try:
+                await asyncio.to_thread(archive)
+            except Exception:  # noqa: BLE001 - never fail a turn over a mirror
+                logger.warning("workspace archive failed for %s", agent_id, exc_info=True)
+            finally:
+                self._archive_tasks.pop(agent_id, None)
+
+        self._archive_tasks[agent_id] = asyncio.get_running_loop().create_task(_run())
+
+    def _workspace_archiver(self, agent_id: str) -> Callable[[], int] | None:
+        """Return the backend's archive callable, if this agent runs in a sandbox."""
+        if self._harness_manager is None:
+            return None
+        try:
+            agent = self._harness_manager.get_agent(agent_id).agent
+        except Exception:  # noqa: BLE001 - agent may be reloading or gone
+            return None
+        backend = getattr(agent, "backend", None)
+        if not getattr(backend, "archives_workspace", False):
+            return None
+        archive = getattr(backend, "archive_workspace", None)
+        return archive if callable(archive) else None
 
     @asynccontextmanager
     async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
@@ -2090,10 +2278,15 @@ class AgentManager:
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             await attach_managed_turn(self, agent_id, req)
+            from octop.infra.agents.teams.file_target import (  # noqa: PLC0415
+                bind_turn_file_target,
+            )
+
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
                 self._turn_model_access_from_request(req),
+                bind_turn_file_target(req),
             ):
                 chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
                 try:
@@ -2146,10 +2339,15 @@ class AgentManager:
             req = self._prepare_stream_request(agent_id, request)
             thread_id = str(req.get("thread_id") or thread_id_from_request(req) or "")
             await attach_managed_turn(self, agent_id, req)
+            from octop.infra.agents.teams.file_target import (  # noqa: PLC0415
+                bind_turn_file_target,
+            )
+
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
                 self._turn_model_access_from_request(req),
+                bind_turn_file_target(req),
             ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
@@ -2293,8 +2491,95 @@ class AgentManager:
                     auto_ids=auto_ids,
                 )
             )
+            impact.update(
+                self._memory_aux_provider_impact_ids(
+                    provider_name=provider_name,
+                    rows=rows,
+                )
+            )
 
         return sorted(impact)
+
+    def _memory_aux_provider_impact_ids(
+        self,
+        *,
+        provider_name: str,
+        rows: list[AgentRow],
+    ) -> set[str]:
+        """Agents whose effective or live memory aux model references *provider_name*."""
+        prefix = f"{provider_name}/"
+        global_defaults = self.get_global_memory_defaults()
+        impact: set[str] = set()
+        memory_enabled_ids: set[str] = set()
+        for row in rows:
+            cfg = parse_config_json(row.config_json)
+            raw_mem = cfg.get("memory")
+            mem = raw_mem if isinstance(raw_mem, dict) else {}
+            if mem.get("memory_enabled") is False:
+                continue
+            memory_enabled_ids.add(row.agent_id)
+            effective = resolve_effective_memory_defaults(mem, global_defaults)
+            if effective.effective_aux_model and effective.effective_aux_model.startswith(prefix):
+                impact.add(row.agent_id)
+        if self._harness_manager is not None:
+            for entry in self._harness_manager.list_agents():
+                aid = getattr(entry, "agent_id", None)
+                if not isinstance(aid, str) or aid not in memory_enabled_ids:
+                    continue
+                built_cfg = getattr(entry, "config", None)
+                if getattr(built_cfg, "memory_enabled", True) is False:
+                    continue
+                for field_name in ("memory_aux_light_model", "memory_aux_heavy_model"):
+                    ref = getattr(built_cfg, field_name, None)
+                    if isinstance(ref, str) and ref.startswith(prefix):
+                        impact.add(aid)
+        return impact
+
+    def get_global_memory_defaults(self) -> GlobalMemoryDefaults:
+        """Return the process-wide default memory extraction settings."""
+        return load_global_memory_defaults(self._repos.settings_repo)
+
+    async def save_global_memory_defaults(
+        self,
+        defaults: GlobalMemoryDefaults,
+    ) -> tuple[GlobalMemoryDefaults, list[str]]:
+        """Persist global memory defaults and reload all inheriting enabled agents."""
+        before = self.get_global_memory_defaults()
+        saved = save_global_memory_defaults(self._repos.settings_repo, defaults)
+        affected = await self.on_global_memory_defaults_changed(
+            aux_model_changed=before.aux_model != saved.aux_model,
+            rules_changed=(
+                before.extract_keep_rules != saved.extract_keep_rules
+                or before.extract_skip_rules != saved.extract_skip_rules
+            ),
+        )
+        return saved, affected
+
+    async def on_global_memory_defaults_changed(
+        self,
+        *,
+        aux_model_changed: bool,
+        rules_changed: bool,
+    ) -> list[str]:
+        """Return affected enabled agents, refreshing active runtimes when available."""
+        if not aux_model_changed and not rules_changed:
+            return []
+        rows = self._repos.agent_repo.list_all(include_disabled=False)
+        impact: list[str] = []
+        for row in rows:
+            cfg = parse_config_json(row.config_json)
+            raw_mem = cfg.get("memory")
+            mem = raw_mem if isinstance(raw_mem, dict) else {}
+            if mem.get("memory_enabled") is False:
+                continue
+            inherits_model = aux_model_changed and infer_aux_model_mode(mem) == "inherit"
+            inherits_rules = rules_changed and infer_extract_rules_mode(mem) == "inherit"
+            if inherits_model or inherits_rules:
+                impact.append(row.agent_id)
+        if self._harness_manager is not None and impact:
+            stopped = {row.agent_id for row in rows if row.last_state == "stopped"}
+            await self._reload_agents([aid for aid in impact if aid not in stopped])
+        return impact
 
     def _stale_auto_default_ids(
         self,
@@ -2974,9 +3259,71 @@ class AgentManager:
             host=host,
             secret_key=secret_key,
         )
-        if self._harness_manager is not None:
-            self._harness_manager.set_langfuse(self._langfuse.harness_config())
+        if enabled and self._cls_observability.load().enabled:
+            self._repos.settings_repo.set("observability_cls_enabled", "false")
+        self._sync_observability_to_harness()
         return view
+
+    async def save_cls(
+        self,
+        *,
+        enabled: bool,
+        region: str,
+        topic_id: str = "",
+        application_id: str = "",
+        application_name: str = "octop",
+        access_type: str = "Langfuse",
+        use_internal_endpoint: bool = False,
+        mask_content: bool = False,
+        secret_id: str | None = None,
+        secret_key: str | None = None,
+        auto_create_app: bool = False,
+        logset_id: str | None = None,
+        reuse_existing: bool = True,
+    ) -> tuple[ClsObservabilitySettings, ClsAgentApplication | None]:
+        """Persist Tencent Cloud CLS observability settings and hot-update the harness runtime.
+
+        When ``enabled=True``, ``auto_create_app=True``, and ``topic_id`` is empty,
+        automatically creates (or reuses) a CLS AgentObs application via
+        ``CreateAgentApplication`` using the customer's SecretId/SecretKey.
+        """
+        resolved_topic = topic_id.strip()
+        resolved_app_id = application_id.strip()
+        resolved_app_name = application_name.strip() or "octop"
+        resolved_access_type = access_type.strip() or "Langfuse"
+        provisioned_app: ClsAgentApplication | None = None
+
+        if enabled and auto_create_app and not resolved_topic:
+            provisioned_app = await self._cls_observability.create_application(
+                region=region,
+                application_name=resolved_app_name,
+                access_type=resolved_access_type,
+                logset_id=logset_id,
+                reuse_existing=reuse_existing,
+                secret_id=secret_id,
+                secret_key=secret_key,
+            )
+            resolved_topic = provisioned_app.topic_id
+            resolved_app_id = provisioned_app.application_id
+            resolved_app_name = provisioned_app.application_name
+            resolved_access_type = provisioned_app.access_type
+
+        view = self._cls_observability.save(
+            enabled=enabled,
+            region=region,
+            topic_id=resolved_topic,
+            application_id=resolved_app_id,
+            application_name=resolved_app_name,
+            access_type=resolved_access_type,
+            use_internal_endpoint=use_internal_endpoint,
+            mask_content=mask_content,
+            secret_id=secret_id,
+            secret_key=secret_key,
+        )
+        if enabled and self._langfuse.load().enabled:
+            self._repos.settings_repo.set("observability_langfuse_enabled", "false")
+        self._sync_observability_to_harness()
+        return view, provisioned_app
 
     async def save_decision(
         self,
@@ -3111,10 +3458,12 @@ class AgentManager:
         Unlike :meth:`update_config_json`, this does not schedule a harness reload.
         Skill enable/disable and marketplace install only need the filter set updated.
         """
+        from octop.infra.agents.builtin_skills import store_skills_disabled  # noqa: PLC0415
+
         cfg = self.get_config(agent_id)
-        cfg["skills_disabled"] = sorted(disabled)
+        store_skills_disabled(cfg, disabled)
         self.persist_harness_config(agent_id, cfg)
-        self.sync_skills_disabled(agent_id, disabled)
+        self.sync_skills_disabled(agent_id, skills_disabled_set(cfg))
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
@@ -4014,7 +4363,8 @@ class AgentManager:
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             return None
-        return self._prepare_docker_backend(self._backend_spec_for_row(row), row)
+        spec = self._backend_spec_for_row(row)
+        return self._prepare_cube_backend(self._prepare_docker_backend(spec, row), row)
 
     def _owner_username(self, row: AgentRow) -> str | None:
         if row.user_id is None:
@@ -4027,6 +4377,100 @@ class AgentManager:
     @staticmethod
     def _spec_is_opensandbox(spec: Any) -> bool:
         return isinstance(spec, dict) and str(spec.get("type") or "").lower() == "opensandbox"
+
+    @staticmethod
+    def _spec_is_cubesandbox(spec: Any) -> bool:
+        return spec == "cubesandbox" or (
+            isinstance(spec, dict) and spec.get("type") == "cubesandbox"
+        )
+
+    def _prepare_cube_backend(self, backend: Any, row: AgentRow) -> Any:
+        """Bind CubeSandbox ownership to the persisted agent and trusted host settings."""
+        if isinstance(backend, dict) and backend.get("type") == "composite":
+            return {
+                **backend,
+                "default": self._prepare_cube_backend(backend.get("default"), row),
+                "routes": {
+                    prefix: self._prepare_cube_backend(route, row)
+                    for prefix, route in (backend.get("routes") or {}).items()
+                },
+            }
+        if not self._spec_is_cubesandbox(backend):
+            return backend
+        if row.user_id is None:
+            raise ValueError("CubeSandbox requires an agent with an owner")
+        spec = backend if isinstance(backend, dict) else {}
+        allowed = {"template", "timeout", "command_timeout", "octop_scope"}
+        prepared = {
+            "type": "cubesandbox",
+            **{key: value for key, value in spec.items() if key in allowed},
+            "octop_user": str(row.user_id),
+            "octop_agent": row.agent_id,
+        }
+        prepared.update(self._cube_workspace_backup())
+        return prepared
+
+    @staticmethod
+    def _cube_workspace_backup() -> dict[str, Any]:
+        """Host-level object-storage mirror for CubeSandbox workspaces.
+
+        Read from the environment rather than agent config: an agent must not be
+        able to point its own workspace backup at an arbitrary bucket. Absent
+        config means no mirror, and a sandbox that is rebuilt starts empty.
+        """
+        raw = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP", "").strip()
+        if not raw:
+            return {}
+        try:
+            spec = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("OCTOP_CUBE_WORKSPACE_BACKUP must be a JSON backend spec") from exc
+        if not isinstance(spec, dict) or "type" not in spec:
+            raise ValueError("OCTOP_CUBE_WORKSPACE_BACKUP must be a JSON object with a 'type' key")
+        options: dict[str, Any] = {"workspace_backup": spec}
+        path = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP_PATH", "").strip()
+        if path:
+            options["workspace_backup_path"] = path
+        prefix = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP_PREFIX", "").strip()
+        if prefix:
+            options["workspace_backup_prefix"] = prefix
+        return options
+
+    @classmethod
+    def _agent_cube_spec(cls, backend: Any) -> dict[str, Any] | None:
+        """Find an agent-owned sandbox, including inside a composite backend."""
+        if backend == "cubesandbox":
+            return {"type": "cubesandbox"}
+        if not isinstance(backend, dict):
+            return None
+        if backend.get("type") == "cubesandbox" and backend.get("octop_scope", "agent") == "agent":
+            return backend
+        if backend.get("type") == "composite":
+            routes = backend.get("routes")
+            children = routes.values() if isinstance(routes, dict) else ()
+            for spec in (backend.get("default"), *children):
+                cube = cls._agent_cube_spec(spec)
+                if cube is not None:
+                    return cube
+        return None
+
+    @classmethod
+    def _destroy_agent_cube_sandbox(cls, backend: Any) -> None:
+        spec = cls._agent_cube_spec(backend)
+        if spec is None:
+            return
+        from octop_harness.backends.cube_sandbox import CubeSandbox, CubeSandboxMissingError
+
+        try:
+            sandbox = CubeSandbox(
+                **{key: value for key, value in spec.items() if key != "type"}, reuse_only=True
+            )
+        except CubeSandboxMissingError:
+            return
+        try:
+            sandbox.destroy()
+        finally:
+            sandbox.close()
 
     def _prepare_docker_backend(self, backend: Any, row: AgentRow) -> Any:
         """Inject Octop docker defaults (prefix / agent_id / username) without overwrite."""
@@ -4064,6 +4508,7 @@ class AgentManager:
             self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir),
             row,
         )
+        backend = self._prepare_cube_backend(backend, row)
         if self._spec_is_opensandbox(backend) and not allow_ephemeral_remote:
             # Stopped-agent / seed fallback: do not create a throwaway remote sandbox.
             backend = {
@@ -4380,8 +4825,6 @@ class AgentManager:
         off: the connected runner executes the turn. Memory follows this
         expert's stored config and stays off unless that config enables it.
         """
-        from octop_harness.acp.models import ACPConfig  # noqa: PLC0415
-
         from octop.infra.agents.managed import (  # noqa: PLC0415
             managed_skill_dir,
             managed_subagent_dir,
@@ -4394,10 +4837,15 @@ class AgentManager:
         if acp_user_id is None:
             acp_user_id = self._connector_user_override.get(row.agent_id)
         runners = self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
-        acp_config = ACPConfig.from_dict({"runners": runners})
+        acp_config = runtime_acp_config(runners)
         runner = cfg.get("managed_runner")
         runner_id = runner.strip() if isinstance(runner, str) else ""
-        memory_settings = _memory_extract_settings(cfg)
+        memory_settings = _memory_extract_settings(
+            cfg,
+            is_ref_usable=self._providers.is_model_ref_usable,
+            reasoning_for_ref=self._providers.get_model_reasoning_capability,
+            global_defaults=self.get_global_memory_defaults(),
+        )
         if memory_settings.get("memory_enabled") is not True:
             memory_settings = {
                 key: False
@@ -4410,7 +4858,7 @@ class AgentManager:
                 if key in _HARNESS_AGENT_CONFIG_FIELDS
             }
         built = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             language=resolve_user_locale(
@@ -4478,7 +4926,9 @@ class AgentManager:
             if persisted:
                 cfg = persisted
 
-        backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        backend = self._prepare_cube_backend(
+            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir), row
+        )
         if getattr(row, "kind", None) == "managed":
             # The ACP runner is the agent. Reuse the workspace and runner
             # binding; do not assemble the expert tool or bootstrap stack.
@@ -4654,6 +5104,9 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        merged_tools.extend(
+            shared_memory_tools(row, self._repos.secret_repo, self._repos.agent_repo.get)
+        )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
@@ -4670,7 +5123,7 @@ class AgentManager:
             runners_dict = (
                 self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
             )
-            acp_config = ACPConfig.from_dict({"runners": runners_dict})
+            acp_config = runtime_acp_config(runners_dict)
 
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None
@@ -4757,6 +5210,7 @@ class AgentManager:
             ws.backend
             if (
                 self._spec_is_opensandbox(backend)
+                or self._spec_is_cubesandbox(backend)
                 or is_adapted_backend(ws.backend)
                 or is_remote_backend_spec(backend)
             )
@@ -4768,7 +5222,7 @@ class AgentManager:
             harness_fields["decision"] = self._decision.harness_config()
 
         harness_cfg = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             # Owner's stored locale only. Per-message language would change
@@ -4800,7 +5254,12 @@ class AgentManager:
             default_timezone=self._config.default_timezone,
             media_generation=self._media_generation.harness_config(),
             **harness_fields,
-            **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
+            **_memory_extract_settings(
+                cfg,
+                is_ref_usable=self._providers.is_model_ref_usable,
+                reasoning_for_ref=self._providers.get_model_reasoning_capability,
+                global_defaults=self.get_global_memory_defaults(),
+            ),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
             **harness_summarization_kwargs(cfg, supported_fields=_HARNESS_AGENT_CONFIG_FIELDS),
         )

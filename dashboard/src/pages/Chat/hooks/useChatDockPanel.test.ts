@@ -33,6 +33,21 @@ describe("useChatDockPanel tabs", () => {
     expect(result.current.openTabs.map((t) => t.id)).toEqual([fileId]);
   });
 
+  it("openFileAt prefers the agent id embedded in a host workspace path", () => {
+    const { result } = renderHook(() => useChatDockPanel(false, "ETYE0Z"));
+    const hostPath = "/home/wally/.octop/agents/50VTYY/cat_article.md";
+    act(() => {
+      result.current.openFileAt(hostPath, "ETYE0Z");
+    });
+    const fileId = dockFileTabId(hostPath, "50VTYY");
+    expect(result.current.activeTabId).toBe(fileId);
+    expect(result.current.openTabs[0]).toMatchObject({
+      kind: "file",
+      path: hostPath,
+      agentId: "50VTYY",
+    });
+  });
+
   it("openKnowledgeCitation opens a dock tab and dedupes by kb/doc id", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     const citation = {

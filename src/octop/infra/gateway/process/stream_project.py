@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from langchain_core.messages import AIMessage
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
 
@@ -29,6 +31,8 @@ if TYPE_CHECKING:
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
 
 install_harness_hitl_compat()
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -239,6 +243,47 @@ def _with_session_auto_approve(
     )
 
 
+async def _persist_turn_file_changes(
+    agent_manager: AgentManager,
+    agent_id: str,
+    thread_id: str,
+    history_tracker: TurnHistoryTracker | None,
+) -> None:
+    """Drain harness write checkpoints into the per-turn store.
+
+    Runs at the end of every projected turn (dashboard, CLI, IM, HITL) so the
+    dashboard can offer per-turn diffs and rewind. Best-effort only.
+    """
+    if history_tracker is None or not thread_id:
+        return
+    try:
+        agent = agent_manager.get_agent(agent_id)
+        pop = getattr(agent, "pop_file_changes", None)
+        if pop is None:
+            return
+        changes = pop()
+        if not changes:
+            return
+        message_id = None
+        for m in reversed(history_tracker.inputs):
+            if isinstance(m, AIMessage):
+                message_id = m.id
+                break
+        if not message_id:
+            return
+        from octop.infra.agents.file_checkpoints import save_checkpoints
+        from octop.infra.utils.paths import PathLayout
+
+        save_checkpoints(PathLayout.from_env().root, agent_id, thread_id, message_id, changes)
+    except Exception:
+        logger.warning(
+            "failed to persist turn file checkpoints agent=%s thread=%s",
+            agent_id,
+            thread_id,
+            exc_info=True,
+        )
+
+
 async def project_stream(
     agent_manager: AgentManager,
     agent_id: str,
@@ -281,6 +326,7 @@ async def project_stream(
         if chunks is not source:
             await close_event_stream(chunks)
         await close_event_stream(source)
+        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)
 
 
 async def project_resume_stream(
@@ -323,3 +369,4 @@ async def project_resume_stream(
         if chunks is not source:
             await close_event_stream(chunks)
         await close_event_stream(source)
+        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)

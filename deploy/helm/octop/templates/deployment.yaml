@@ -89,6 +89,36 @@ spec:
               value: {{ .Values.config.timezone | quote }}
             - name: OCTOP_CORS_ORIGINS
               value: {{ include "octop.corsOrigins" . | quote }}
+            {{- if .Values.cubeSandbox.enabled }}
+            {{- $secret := required "cubeSandbox.existingSecret is required when CubeSandbox is enabled" .Values.cubeSandbox.existingSecret }}
+            - name: CUBE_API_URL
+              value: {{ required "cubeSandbox.apiUrl is required when CubeSandbox is enabled" .Values.cubeSandbox.apiUrl | quote }}
+            {{- with .Values.cubeSandbox.proxyNodeIP }}
+            - name: CUBE_PROXY_NODE_IP
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.cubeSandbox.proxyPortHTTP }}
+            - name: CUBE_PROXY_PORT_HTTP
+              value: {{ . | quote }}
+            {{- end }}
+            - name: CUBE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: api-key
+                  optional: true
+            - name: OCTOP_CUBESANDBOX_LOCK_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: lock-dsn
+            - name: OCTOP_CUBE_WORKSPACE_BACKUP
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret | quote }}
+                  key: workspace-backup
+                  optional: true
+            {{- end }}
           startupProbe:
             httpGet:
               path: /api/health

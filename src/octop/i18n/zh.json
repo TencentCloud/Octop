@@ -1,4 +1,48 @@
 {
+  "cls_cli": {
+    "environment_incomplete": "请检查 Octop 服务环境中的地域、Trace Topic ID、接入类型和腾讯云凭证。",
+    "saved_incomplete": "请先用 octop cls configure 补全 CLS 配置，再测试连接。",
+    "token_required": "请通过 OCTOP_ACCESS_TOKEN 提供具有可观测权限的 Octop 访问令牌。",
+    "token": "Octop 访问令牌",
+    "connection": "无法连接 Octop 服务（{reason}）。",
+    "invalid_response": "Octop 服务返回了无效的 JSON 响应。",
+    "unchecked": "未验证",
+    "yes": "是",
+    "no": "否",
+    "active_backend": "当前追踪后端",
+    "source": "CLS 配置来源",
+    "enabled": "已启用",
+    "region": "地域",
+    "topic_id": "Trace Topic ID",
+    "application_id": "应用 ID",
+    "application_name": "应用名",
+    "access_type": "接入类型",
+    "use_internal_endpoint": "使用内网地址",
+    "mask_content": "内容脱敏",
+    "secret_id_masked": "SecretId（已打码）",
+    "secret_id_set": "已设置 SecretId",
+    "secret_key_set": "已设置 SecretKey",
+    "configured": "配置完整且已启用",
+    "endpoint": "上报地址",
+    "ok": "连接测试通过",
+    "api_ok": "管理 API 可访问",
+    "otlp_ok": "上报端点接受探测",
+    "error": "错误",
+    "pair_required": "请同时设置 TENCENTCLOUD_SECRET_ID 和 TENCENTCLOUD_SECRET_KEY，或交互输入凭证。",
+    "sts": "STS 临时凭证请配置在 Octop 服务环境中，并设置 TENCENTCLOUD_TOKEN。持久化配置需要长期密钥。",
+    "replace_keys": "替换已保存的腾讯云凭证（{masked}）？",
+    "no_apps": "该地域没有带 Trace Topic 的应用，可通过 --topic-id 直接绑定。",
+    "select_app": "选择应用序号",
+    "mode_conflict": "--new 和 --existing 只能选择一个。",
+    "topic_conflict": "--topic-id 用于绑定已有 Topic，请选择 --existing。",
+    "mode": "新建应用（new）或绑定已有 Topic（existing）",
+    "binding": "输入 Topic ID（topic）或选择已有应用（list）",
+    "topic_required": "请通过 --topic-id 指定已有 Trace Topic。",
+    "switch_backend": "保存此次配置会把当前追踪后端从 Langfuse 切换为 CLS。",
+    "bound": "已绑定 {region} 的 Trace Topic {topic}，CLS 上报已启用。",
+    "created": "已在 {region} 新建应用 {name}，CLS 已开始向 Topic {topic} 上报。",
+    "reused": "已复用 {region} 的同名应用 {name}，CLS 已启用向 Topic {topic} 上报。"
+  },
   "slash": {
     "error": {
       "unknown_command": "未知指令：/{name}。输入 /help 查看可用指令。"
@@ -343,6 +387,7 @@
     }
   },
   "connector": {
+    "probe_failed": "连接器探测失败，请查看服务端日志排查详情。",
     "oauth": {
       "callback_auth_failed": "授权失败：{error}",
       "callback_missing_params": "缺少 code 或 state。",
@@ -435,6 +480,7 @@
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
     "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
     "CODEX_OAUTH_START_FAILED": "无法启动 ChatGPT 登录。请检查服务器到 auth.openai.com 的连接后重试。",
+    "MEMORY_SERVICE_CONFLICT": "记忆服务报告冲突，请检查空间的存储绑定或 token 状态。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "RESOURCE_NOT_ALLOWED": "你没有使用该资源的权限。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
@@ -540,6 +586,8 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_DISABLED": "该邀请码已停用。",
+    "INVITE_EXHAUSTED": "该邀请已达到注册人数上限。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
@@ -565,7 +613,10 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "GIT_NO_CHANGES": "没有可提交的更改。",
+    "GIT_COMMIT_MESSAGE_INVALID": "模型没有返回可用的提交信息，请手动填写。",
+    "GIT_PUSH_DETACHED": "当前处于 detached HEAD，无法推送。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -742,7 +793,10 @@
         "ak": "AK",
         "sk": "SK",
         "agent_id": "Agent ID",
-        "host": "Broker Host"
+        "host": "Broker Host",
+        "access_token": "Access Token",
+        "phone_number_id": "Phone Number ID",
+        "bridge_url": "扫码桥接服务地址 (Bridge URL)"
       },
       "discord_invalid_token": "Discord Bot Token 无效，请在 Bot 页面重新生成并更新。",
       "discord_intents_required": "请在 Discord 应用的 Bot 页面开启 Message Content Intent。",
@@ -777,6 +831,7 @@
     "fork_default_title": "分叉对话"
   },
   "cron": {
+    "missing_target_session": "此定时任务的会话已不可用，请在任务设置中重新选择投递目标。",
     "history": {
       "executed": "任务{cron_id} :{name} 执行.",
       "script_done": "脚本 {name} 已执行，没有输出。"
@@ -825,7 +880,8 @@
     "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。",
     "model_call_failed_detail": "模型调用失败：{detail}",
     "model_retry_prompt": "模型接口调用失败，不要假装任务已经完成。\n\n原因：{guidance}\n\n请用用户的语言说明情况并给出下一步建议。不要用同样的请求再试一次。\n\n技术细节：{detail}",
-    "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。"
+    "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。",
+    "database_corrupt": "本地 SQLite 数据库文件已损坏（database disk image is malformed），并非模型配置问题。请先停止 Octop 服务，运行 `octop doctor db` 定位损坏库文件，再执行 `octop doctor db --fix` 修复（详见 logs/octop.log）。"
   },
   "attachment": {
     "header": "[附件] {filename}",
@@ -838,6 +894,7 @@
     "image_unavailable": "[附件] 图片无法加载到模型。"
   },
   "knowledge": {
+    "invalid_advanced_settings": "请检查分块与检索参数的取值范围。分块重叠必须小于分块大小。",
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
       "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
@@ -1019,7 +1076,8 @@
     "member_file_target_send": "这个服务器上的 send_file_to_user 也从这里读文件。",
     "runner_workspace_write": "这次调用写的是运行器自己的工作区，没有写到所选目录。",
     "member_file_target_execute": "execute 也在这个目录中执行。",
-    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。"
+    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。",
+    "member_file_mounts": "以下目录只读，仍是你自己的技能和子代理目录。请按这些路径原样读取：\n{paths}"
   },
   "bridge": {
     "local_directory_relative": "本地目录必须是这台 Octop 上的绝对路径。",
@@ -1083,7 +1141,8 @@
     "error_health": "Laya 没有在限定时间内就绪。请复制日志交给 Octop 继续排查。",
     "error_exited": "laya-serve 在就绪前退出了。",
     "error_not_installed": "尚未安装 Laya。",
-    "error_stalled": "安装长时间没有结果，已停止。"
+    "error_stalled": "安装长时间没有结果，已停止。",
+    "error_failed": "安装意外失败，请查看服务端日志排查详情。"
   },
   "text_assist": {
     "kinds": {

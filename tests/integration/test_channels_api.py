@@ -24,6 +24,24 @@ async def env(env_alice_bob_agent):
     "kind,config",
     [
         ("feishu", {"app_id": "x"}),
+        (
+            "qq",
+            {
+                "app_id": "offline",
+                "group_context": {
+                    "enabled": False,
+                    "owner_commands_only": True,
+                    "owner_ids": ["owner-1"],
+                },
+            },
+        ),
+        (
+            "qq",
+            {
+                "app_id": "offline",
+                "group_context": {"owner_commands_only": False, "owner_ids": ["owner-1"]},
+            },
+        ),
         ("discord", {"bot_token": "fake", "allowed_channel_ids": ["200"]}),
         ("discord", {"bot_token": "fake", "allow_all_channels": True}),
         (
@@ -60,7 +78,10 @@ async def test_create_lists_get_patch_delete_cycle(env: Any, kind: str, config: 
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == cid
-    assert body["config"] == config
+    secrets = [key for key in ("bot_token", "app_secret", "secret") if key in config]
+    assert body["secrets_set"] == secrets
+    assert body["config"] == {key: value for key, value in config.items() if key not in secrets}
+    assert all(secret not in r.text for secret in (config.get("bot_token"),) if secret)
 
     # PATCH name + enabled
     r = await c.patch(

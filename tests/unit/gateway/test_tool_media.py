@@ -22,7 +22,9 @@ from octop.infra.gateway.media.tool_media import (
     attachment_frames_from_tool_result,
     enrich_media_block_preview,
     enrich_tool_result_with_backend,
+    history_attachments_from_chunk,
     iter_media_blocks,
+    merge_history_attachments,
 )
 
 
@@ -996,3 +998,39 @@ async def test_managed_send_file_marker_pushes_without_the_tool_name() -> None:
             )
         ]
         assert skipped == []
+
+
+def test_history_attachments_keep_the_live_delivery_path() -> None:
+    payload = json.dumps(
+        {
+            "type": "file",
+            "path": "/agents/host/deck.pptx",
+            "filename": "deck.pptx",
+            "source": {
+                "type": "url",
+                "url": "file:///agents/host/deck.pptx",
+                "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            },
+        }
+    )
+    live = history_attachments_from_chunk(
+        {
+            "messages": [
+                {"tool_call_id": "old", "name": "send_file_to_user", "content": payload},
+                {
+                    "tool_call_id": "live",
+                    "name": "write_file",
+                    "content": payload,
+                },
+            ]
+        }
+    )
+    assert live == [
+        {
+            "type": "file",
+            "filename": "deck.pptx",
+            "workspace_path": "/agents/host/deck.pptx",
+            "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+    ]
+    assert merge_history_attachments(live, live) == live

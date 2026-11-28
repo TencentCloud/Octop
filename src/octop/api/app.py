@@ -185,11 +185,13 @@ def build_app(server: OctopServer) -> FastAPI:
         channels,
         chat,
         cloud,
+        codex_memory_review,
         connectors,
         cron,
         desktop,
         envs,
         experts,
+        file_checkpoints,
         health,
         i18n,
         internal_mcp,
@@ -199,7 +201,9 @@ def build_app(server: OctopServer) -> FastAPI:
         mbti,
         media_generation,
         memory,
+        memory_mcp,
         memory_portable,
+        memory_sharing,
         memory_storage,
         mobile,
         ollama_models,
@@ -226,9 +230,11 @@ def build_app(server: OctopServer) -> FastAPI:
         users,
         voice,
         workspace,
+        workspace_git,
     )
     from octop.api.routers.decision import router as decision_router
     from octop.api.routers.filesystem import router as filesystem_router
+    from octop.api.routers.memory_defaults import router as memory_defaults_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
     from octop.api.routers.security import router as security_router
@@ -270,6 +276,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(cron.router, "/api", ["cron"]),
             _RouterMount(settings.router, "/api", ["settings"]),
             _RouterMount(decision_router, "/api", ["settings"]),
+            _RouterMount(memory_defaults_router, "/api", ["settings"]),
             _RouterMount(envs.router, "/api", ["envs"]),
             _RouterMount(search.router, "/api", ["search"]),
             _RouterMount(providers.router, "/api/providers", ["providers"]),
@@ -298,8 +305,13 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(managed.router, "/api", ["agents"]),
             _RouterMount(text_assist.router, "/api", ["text-assist"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
+            _RouterMount(workspace_git.router, "/api", ["git"]),
+            _RouterMount(file_checkpoints.router, "/api", ["git"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),
+            _RouterMount(memory_sharing.router, "/api", ["memory"]),
+            _RouterMount(codex_memory_review.router, "/api", ["memory"]),
+            _RouterMount(memory_mcp.router, "/api", ["memory"]),
             _RouterMount(memory_portable.router, "/api", ["memory"]),
             _RouterMount(memory_storage.router, "/api", ["memory"]),
             _RouterMount(proactive_care.router, "/api", ["proactive-care"]),
@@ -326,6 +338,14 @@ def build_app(server: OctopServer) -> FastAPI:
                 _RouterMount(mobile.router, "/api", ["mobile"]),
             ],
         )
+
+    # Before the dashboard catch-all so extension routes and static mounts win.
+    from octop.infra.extensions import extension_hooks
+
+    for _name, configure in extension_hooks("configure_app"):
+        configure(app, server)
+
+    # 记忆 MCP 服务在独立的 octop-memory 服务里；Octop 只提供管理代理与专家绑定。
 
     if enable_api_docs:
 

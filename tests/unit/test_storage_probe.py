@@ -52,6 +52,32 @@ def test_filesystem_missing_root(tmp_path: Path) -> None:
     assert result.get("message_key") == "probe_roundtrip_ok"
 
 
+def test_cubesandbox_probe_checks_command_and_files_and_destroys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop_harness.backends import cube_sandbox
+
+    sandbox = MagicMock()
+    sandbox.upload_files.return_value = [MagicMock(error=None)]
+    sandbox.download_files.return_value = [MagicMock(error=None, content=b"")]
+    sandbox.execute.return_value.exit_code = 0
+
+    def upload(files: list[tuple[str, bytes]]) -> list[Any]:
+        sandbox.download_files.return_value[0].content = files[0][1]
+        return [MagicMock(error=None)]
+
+    sandbox.upload_files.side_effect = upload
+    create = MagicMock(return_value=sandbox)
+    monkeypatch.setattr(cube_sandbox, "CubeSandbox", create)
+
+    result = probe_storage_backend(_row(kind="cubesandbox", bucket="tpl-test"))
+    assert result == {"ok": True, "message_key": "cubesandbox_probe_ok"}
+    create.assert_called_once_with(template="tpl-test", timeout=120, command_timeout=15)
+    sandbox.execute.assert_called_once()
+    sandbox.destroy.assert_called_once()
+    sandbox.close.assert_called_once()
+
+
 def test_docker_probe_spec_injects_test_ids() -> None:
     agent = _docker_probe_spec(_row(kind="docker", bucket="python:3.12-slim"))
     assert agent is not None
