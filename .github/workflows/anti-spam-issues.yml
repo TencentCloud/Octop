@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Close suspicious issues
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           LABEL_NAME: "pending-maintainer-review"
           LABEL_COLOR: "cfd3d7"

@@ -46,7 +46,7 @@ jobs:
       pkg_ver: ${{ steps.ver.outputs.pkg_ver }}
       image: ${{ steps.ver.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -81,10 +81,10 @@ jobs:
       full: ${{ steps.wait.outputs.full }}
     steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -137,13 +137,13 @@ jobs:
     needs: [ensure-image, version]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Cache fnpack CLI
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
@@ -161,7 +161,7 @@ jobs:
           fi
 
       - name: Upload docker fpk artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-fpk
           path: dist/Octop-fnos-docker-*.fpk
@@ -174,13 +174,13 @@ jobs:
     outputs:
       native_ok: ${{ steps.build_native.outcome == 'success' && steps.upload_native.outcome == 'success' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Cache fnpack CLI
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
@@ -205,13 +205,13 @@ jobs:
           fi
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Set up Node.js 20 (frontend build)
         if: steps.wheel.outputs.source == 'build'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -280,7 +280,7 @@ jobs:
 
       - name: Upload native fpk artifact
         id: upload_native
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-fpk
           path: dist/Octop-fnos-native-amd64-*.fpk
@@ -288,7 +288,7 @@ jobs:
 
       - name: Upload native install log (for debugging)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-install-log
           path: native-install.log
@@ -301,7 +301,7 @@ jobs:
     outputs:
       site_packages_ok: ${{ steps.upload_sp.outcome == 'success' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -326,13 +326,13 @@ jobs:
           fi
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Set up Node.js 20 (frontend build)
         if: steps.wheel.outputs.source == 'build'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
@@ -396,7 +396,7 @@ jobs:
 
       - name: Upload aarch64 site-packages
         id: upload_sp
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-arm64-site-packages
           path: fnos/native/app/site-packages
@@ -404,7 +404,7 @@ jobs:
 
       - name: Upload native arm64 install log (for debugging)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-arm64-install-log
           path: native-arm64-install.log
@@ -415,19 +415,19 @@ jobs:
     if: needs.native-arm64.outputs.site_packages_ok == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Cache fnpack CLI
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
 
       - name: Download aarch64 site-packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-arm64-site-packages
           path: fnos/native/app/site-packages
@@ -445,7 +445,7 @@ jobs:
         run: ls -lh dist/Octop-fnos-native-arm64-*.fpk
 
       - name: Upload native arm64 fpk artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-arm64-fpk
           path: dist/Octop-fnos-native-arm64-*.fpk
@@ -457,33 +457,31 @@ jobs:
     needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Download docker fpk artifact (best-effort)
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: docker-fpk
           path: artifacts/docker-fpk
 
       - name: Download native fpk artifact (best-effort)
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-fpk
           path: artifacts/native-fpk
-          if-no-files-found: ignore
 
       - name: Download native arm64 fpk artifact (best-effort)
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: native-arm64-fpk
           path: artifacts/native-arm64-fpk
-          if-no-files-found: ignore
 
       - name: Stage dist
         run: |
@@ -509,7 +507,7 @@ jobs:
           fi
 
       - name: Attach fpk to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           files: dist/*.fpk
