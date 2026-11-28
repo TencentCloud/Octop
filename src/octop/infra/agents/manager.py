@@ -5068,6 +5068,12 @@ class AgentManager:
         # OctopUiOffload stays innermost so every outer middleware observes the
         # slimmed content consistently; it only touches octop_ui plugin envelopes,
         # disjoint from the file-tool results ThreadArtifacts cares about.
+        uid = getattr(row, "user_id", None)
+        agent_locale = (
+            resolve_user_locale(user_repo=self._repos.user_repo, user_id=uid)
+            if isinstance(uid, int) and uid > 0
+            else DEFAULT_LOCALE
+        )
         agent_middleware: list[Any] = [
             *plugin_middleware,
             TokenQuotaMiddleware(
@@ -5081,7 +5087,7 @@ class AgentManager:
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
             *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
-            WorkspaceImageMaterializeMiddleware(workspace=ws),
+            WorkspaceImageMaterializeMiddleware(workspace=ws, locale=agent_locale),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,
@@ -5090,13 +5096,7 @@ class AgentManager:
             OctopUiOffloadMiddleware(),
         ]
         if team_host:
-            uid = getattr(row, "user_id", None)
-            locale = (
-                resolve_user_locale(user_repo=self._repos.user_repo, user_id=uid)
-                if isinstance(uid, int) and uid > 0
-                else DEFAULT_LOCALE
-            )
-            agent_middleware.append(HostDispatchGuardMiddleware(locale=locale))
+            agent_middleware.append(HostDispatchGuardMiddleware(locale=agent_locale))
 
         merged_tools: list[Any] = []
         if cron_tools:

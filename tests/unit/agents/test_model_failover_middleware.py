@@ -447,3 +447,39 @@ async def test_cooled_down_model_is_tried_again(monkeypatch) -> None:
     )
     assert second.result[0].content == "back"
     assert health.is_routable("Magpie/a")
+
+
+@pytest.mark.asyncio
+async def test_bad_request_400_is_not_retried_even_when_max_retries_nonzero(monkeypatch) -> None:
+    import httpx
+    from openai import BadRequestError
+
+    model = _model("Magpie/a", 100_000)
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, _vision: [AutoRouteCandidate("openai/b", 100_000)],
+        model_for_ref=lambda ref: _model(ref, 100_000),
+        max_retries=2,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "Magpie/a", "octop_auto_route": True},
+    )
+    req = httpx.Request("POST", "https://api.example.com/v1/chat/completions")
+    resp = httpx.Response(400, request=req)
+    err = BadRequestError(
+        "Error code: 400 - image_invalid",
+        response=resp,
+        body={"error": {"code": "image_invalid"}},
+    )
+    handler = AsyncMock(side_effect=err)
+
+    response = await middleware.awrap_model_call(
+        ModelRequest(model=model, messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+    assert "[model_call_failed]" in str(response.result[0].content)
+    assert handler.await_count == 1
