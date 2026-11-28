@@ -188,6 +188,7 @@ class GlobalProcessor:
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
         thread_message_repo: Any | None = None,
+        care_push_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
@@ -210,6 +211,7 @@ class GlobalProcessor:
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
         self._thread_message_repo = thread_message_repo
+        self._care_push_repo = care_push_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
@@ -238,6 +240,47 @@ class GlobalProcessor:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
         self.teams.replace_thread_message_repo(repo)
+
+    def replace_care_push_repo(self, repo: Any) -> None:
+        """Rebind proactive care reply tracking after a control-plane restore."""
+        self._care_push_repo = repo
+
+    def _mark_care_replied(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        history_tracker: TurnHistoryTracker,
+    ) -> None:
+        if self._care_push_repo is None:
+            return
+        reply_msg_id: str | None = None
+        for seed in history_tracker.seed_messages:
+            mid = seed.get("id") if isinstance(seed, dict) else getattr(seed, "id", None)
+            if isinstance(mid, str) and mid.strip():
+                reply_msg_id = mid.strip()
+                break
+        try:
+            updated = self._care_push_repo.mark_replied_for_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                reply_message_id=reply_msg_id,
+            )
+            if updated:
+                logger.info(
+                    "ProactiveCare: marked %d record(s) replied agent=%s thread=%s reply_msg=%s",
+                    updated,
+                    agent_id,
+                    thread_id,
+                    reply_msg_id,
+                )
+        except Exception:
+            logger.warning(
+                "ProactiveCare: failed to mark reply agent=%s thread=%s",
+                agent_id,
+                thread_id,
+                exc_info=True,
+            )
 
     def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
         if self._trajectory_service is None:
@@ -1047,6 +1090,7 @@ class GlobalProcessor:
             agent_id=agent_id,
             session_key=session_key,
             source=f"{msg.channel_type}/{msg.channel_id}",
+            allowed_tools=getattr(msg, "allowed_tools", None),
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
@@ -1082,6 +1126,11 @@ class GlobalProcessor:
         failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         projection_state = StreamProjectionState()
         try:
             turn_stream = project_stream(
@@ -1389,6 +1438,11 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1722,6 +1776,7 @@ class GlobalProcessor:
             session_key=session_key,
             source=source,
             content=content,
+            allowed_tools=getattr(msg, "allowed_tools", None),
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,

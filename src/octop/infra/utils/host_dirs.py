@@ -267,6 +267,26 @@ def assert_safe_host_path(
     return resolved
 
 
+def assert_safe_host_file(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> str:
+    """Resolve *path* and require a regular file at the safe host location."""
+    safe = assert_safe_host_path(
+        path,
+        restrict_to_home=restrict_to_home,
+        restrict_to_root=restrict_to_root,
+    )
+    resolved = os.path.realpath(os.fspath(safe))
+    drive, _tail = os.path.splitdrive(resolved)
+    base = f"{drive}{os.sep}" if drive else os.sep
+    if not resolved.startswith(base) or not os.path.isfile(resolved):
+        raise ValueError("path must be an existing file")
+    return resolved
+
+
 def _hidden_root_listing(listed: Path, child: Path, resolved: Path) -> bool:
     """True when *child* is a system directory directly under the filesystem root."""
     if os.name != "posix":

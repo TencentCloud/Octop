@@ -54,7 +54,7 @@ function VariantPickerDrawer({
       footer={null}
       onClose={onClose}
       destroyOnHidden
-      width={480}
+      width={520}
       placement="right"
     >
       <div className={styles.variantList}>

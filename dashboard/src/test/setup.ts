@@ -15,6 +15,15 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// pdfjs-dist (via react-pdf) runs ``new DOMMatrix()`` when its module loads,
+// and jsdom has no DOMMatrix. Tests never render a PDF page (jsdom has no
+// canvas either), so an empty stand-in is enough to let modules that import
+// the PDF preview load.
+if (typeof globalThis.DOMMatrix === "undefined") {
+  globalThis.DOMMatrix =
+    class DOMMatrix {} as unknown as typeof globalThis.DOMMatrix;
+}
+
 // Auto-mock react-i18next so components' ``t(key, fallback)`` calls
 // resolve synchronously to ``fallback`` without needing the real
 // i18n module (which would async-fetch tool labels and add 1-2s of

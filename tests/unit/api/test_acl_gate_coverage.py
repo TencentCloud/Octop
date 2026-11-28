@@ -42,6 +42,7 @@ GATED_FILES = [
     "routers/skills.py",
     "routers/skill_packages.py",
     "routers/memory.py",
+    "routers/memory_defaults.py",
     "routers/memory_storage.py",
     "routers/memory_portable.py",
     "routers/mbti.py",

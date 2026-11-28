@@ -16,9 +16,9 @@ from typing import Any
 
 import httpx
 
-from octop.infra.agents.providers.model_flags import is_rerank_model
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 from octop.infra.agents.providers.probe import provider_headers
+from octop.infra.knowledge.model_options import remote_models
 
 _ENABLED_KEY = "knowledge_rerank_enabled"
 _PROVIDER_ID_KEY = "knowledge_rerank_provider_id"
@@ -43,15 +43,6 @@ def _as_bool(value: str | None) -> bool:
     return str(decoded).strip().lower() == "true"
 
 
-def rerank_models(provider: Any) -> list[dict[str, str]]:
-    """Rerank models a provider offers, as ``{id, name}``."""
-    return [
-        {"id": str(model["id"]), "name": str(model.get("name") or model["id"])}
-        for model in provider.get_models()
-        if str(model.get("id") or "").strip() and is_rerank_model(model)
-    ]
-
-
 def _provider(provider_repo: Any, provider_id: str) -> Any | None:
     if provider_repo is None or not provider_id.isdigit():
         return None
@@ -59,13 +50,7 @@ def _provider(provider_repo: Any, provider_id: str) -> Any | None:
 
 
 def _ready(provider: Any | None, model: str) -> bool:
-    return bool(
-        provider
-        and provider.enabled
-        and provider.api_key
-        and provider.base_url
-        and any(candidate["id"] == model for candidate in rerank_models(provider))
-    )
+    return any(candidate["id"] == model for candidate in remote_models(provider, "rerank"))
 
 
 def get_rerank_capability(settings_get: Any, provider_repo: Any = None) -> dict[str, Any]:

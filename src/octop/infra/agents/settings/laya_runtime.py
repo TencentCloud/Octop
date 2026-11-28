@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import re
 import shlex
@@ -24,6 +25,8 @@ from typing import Any
 from octop.i18n import tr
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.posix_compat import killpg
+
+logger = logging.getLogger(__name__)
 
 LAYA_VERSION = "0.4.7"
 LAYA_HOST = "127.0.0.1"
@@ -182,8 +185,8 @@ async def _stream_command(
             stderr=asyncio.subprocess.STDOUT,
             env=env,
         )
-    except OSError as exc:
-        emit(str(exc))
+    except OSError:
+        logger.warning("failed to start Laya install command %s", argv[0] if argv else "")
         return 127
     assert proc.stdout is not None
     while True:
@@ -306,8 +309,19 @@ class LayaRuntime:
         self._say(tr("laya.started", locale))
         try:
             await self._spawn()
-        except OSError as exc:
-            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error=exc))
+        except FileNotFoundError:
+            logger.warning("laya-serve binary not found", exc_info=True)
+            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error="file not found"))
+            return await self.status()
+        except PermissionError:
+            logger.warning("permission denied starting laya-serve", exc_info=True)
+            self._fail(
+                tr("laya.error_spawn", locale, command="laya-serve", error="permission denied")
+            )
+            return await self.status()
+        except OSError:
+            logger.warning("failed to spawn laya-serve", exc_info=True)
+            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error="OS error"))
             return await self.status()
         self._task = asyncio.create_task(self._watch_health(locale))
         return await self.status()
@@ -334,8 +348,9 @@ class LayaRuntime:
         except asyncio.CancelledError:
             self._phase = "failed"
             raise
-        except Exception as exc:  # noqa: BLE001 — surface the failure in the install log
-            self._fail(redact(str(exc)))
+        except Exception:
+            logger.exception("unexpected error during Laya install")
+            self._fail(tr("laya.error_failed", locale))
 
     async def _install(self, locale: str) -> None:
         self._say(tr("laya.install_start", locale))
@@ -395,8 +410,19 @@ class LayaRuntime:
         self._say(tr("laya.install_server", locale, port=LAYA_PORT))
         try:
             await self._spawn()
-        except OSError as exc:
-            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error=exc))
+        except FileNotFoundError:
+            logger.warning("laya-serve binary not found after install", exc_info=True)
+            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error="file not found"))
+            return
+        except PermissionError:
+            logger.warning("permission denied starting laya-serve after install", exc_info=True)
+            self._fail(
+                tr("laya.error_spawn", locale, command="laya-serve", error="permission denied")
+            )
+            return
+        except OSError:
+            logger.warning("failed to spawn laya-serve after install", exc_info=True)
+            self._fail(tr("laya.error_spawn", locale, command="laya-serve", error="OS error"))
             return
         if not await self._wait_until_ready(locale):
             return

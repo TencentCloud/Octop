@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_any_permission, require_permission
-from octop.api.routers.users import _assert_can_assign
 from octop.infra.db.repos.user_roles import (
     BUILTIN_USER_ROLE_IDS,
     UserRoleRepo,
@@ -24,6 +23,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.permissions import (
     ASSIGNABLE_PERMISSION_KEYS,
+    assert_can_assign_permissions,
     expand_permission_grants,
     validate_permission_keys,
 )
@@ -269,7 +269,7 @@ async def create_user_role(
         permissions = validate_permission_keys(body.permissions)
     except ValueError as exc:
         raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
-    _assert_can_assign(actor, permissions)
+    assert_can_assign_permissions(actor, permissions)
     policies = _policies_for_write(body) or []
     try:
         row = _repo(server).create(
@@ -337,7 +337,7 @@ async def patch_user_role(
             permissions = validate_permission_keys(body.permissions)
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
-        _assert_can_assign(actor, permissions)
+        assert_can_assign_permissions(actor, permissions)
     try:
         updated = _repo(server).update(
             user_role_id,

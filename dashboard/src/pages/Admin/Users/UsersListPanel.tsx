@@ -808,7 +808,7 @@ const BACKEND_POLICY_GROUPS: { labelKey: string; types: readonly string[] }[] =
     },
     {
       labelKey: "storage.groupSandbox",
-      types: ["docker", "opensandbox"],
+      types: ["docker", "opensandbox", "cubesandbox"],
     },
     {
       labelKey: "storage.groupDatabase",
@@ -2840,7 +2840,7 @@ export default function UsersListPanel() {
         }
         open={agentDrawerUser !== null}
         onClose={() => setAgentDrawerUser(null)}
-        width={400}
+        width={520}
         destroyOnHidden
       >
         <Spin spinning={agentsLoading}>

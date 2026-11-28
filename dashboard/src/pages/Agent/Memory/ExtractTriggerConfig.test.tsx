@@ -1,3 +1,5 @@
+import { MemoryRouter } from "react-router-dom";
+import { CurrentUserProvider } from "../../../hooks/useCurrentUser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -78,7 +80,11 @@ describe("<MemorySettings />", () => {
         extract_trigger_mode: "idle",
         extract_idle_seconds: 300,
         extract_interval_seconds: 21600,
-        aux_model: "",
+        aux_model_mode: "inherit",
+        aux_model: null,
+        extract_rules_mode: "inherit",
+        extract_keep_rules: "",
+        extract_skip_rules: "",
         extract_max_tokens: 0,
         extract_light_timeout_s: 0,
         extract_heavy_timeout_s: 0,
@@ -90,10 +96,19 @@ describe("<MemorySettings />", () => {
     });
   });
 
-  it("saves a pinned extraction model", async () => {
-    api.getExtractConfig.mockResolvedValue(idleConfig);
+  it("switches extraction model to custom and saves a pinned model", async () => {
+    api.getExtractConfig.mockResolvedValue({
+      ...idleConfig,
+      global_defaults: {
+        aux_model: "hai/global-light",
+        aux_model_usable: true,
+        extract_keep_rules: "保留稳定偏好",
+        extract_skip_rules: "跳过寒暄",
+      },
+    });
     api.putExtractConfig.mockResolvedValue({
       ...idleConfig,
+      aux_model_mode: "custom",
       aux_model: "hai/mini",
     });
     providers.listResolvedModels.mockResolvedValue([
@@ -102,14 +117,82 @@ describe("<MemorySettings />", () => {
     const user = userEvent.setup();
     render(<MemorySettings agentId="ZYWZTD" />);
     await screen.findByText("记忆提取模型");
+    expect(
+      screen.getByText(/当前继承全局：hai\/global-light/),
+    ).toBeInTheDocument();
 
+    // Switch extraction model to custom while leaving memory rules inherited.
+    const customButtons = screen.getAllByText("自定义");
+    await user.click(customButtons[0]);
     await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
     await user.click(await screen.findByTitle("hai / Mini"));
     await user.click(screen.getByRole("button", { name: "保存设置" }));
     await waitFor(() =>
       expect(api.putExtractConfig).toHaveBeenCalledWith(
         "ZYWZTD",
-        expect.objectContaining({ aux_model: "hai/mini" }),
+        expect.objectContaining({
+          aux_model_mode: "custom",
+          aux_model: "hai/mini",
+          extract_rules_mode: "inherit",
+        }),
+      ),
+    );
+  });
+
+  it("prefills global rules when switching to custom and supports restoring inheritance", async () => {
+    api.getExtractConfig.mockResolvedValue({
+      ...idleConfig,
+      supported_call_options: ["extract_rules"],
+      global_defaults: {
+        aux_model: "hai/global-light",
+        aux_model_usable: true,
+        extract_keep_rules: "全局保留偏好",
+        extract_skip_rules: "全局跳过闲聊",
+      },
+    });
+    api.putExtractConfig.mockResolvedValue({
+      ...idleConfig,
+      extract_rules_mode: "custom",
+      extract_keep_rules: "全局保留偏好 + 领域记录",
+      extract_skip_rules: "全局跳过闲聊",
+    });
+    const user = userEvent.setup();
+    render(<MemorySettings agentId="ZYWZTD" />);
+    await screen.findByText("记忆规则");
+    expect(screen.getByText("全局保留偏好")).toBeInTheDocument();
+    expect(screen.getByText("全局跳过闲聊")).toBeInTheDocument();
+
+    const customButtons = screen.getAllByText("自定义");
+    await user.click(customButtons[1]);
+
+    const keepInput = screen.getByLabelText("值得保留为长期记忆的信息");
+    expect(keepInput).toHaveValue("全局保留偏好");
+    await user.type(keepInput, " + 领域记录");
+
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() =>
+      expect(api.putExtractConfig).toHaveBeenCalledWith(
+        "ZYWZTD",
+        expect.objectContaining({
+          aux_model_mode: "inherit",
+          extract_rules_mode: "custom",
+          extract_keep_rules: "全局保留偏好 + 领域记录",
+          extract_skip_rules: "全局跳过闲聊",
+        }),
+      ),
+    );
+
+    // Restore inheritance on rules.
+    await user.click(screen.getByRole("button", { name: "恢复继承全局" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() =>
+      expect(api.putExtractConfig).toHaveBeenLastCalledWith(
+        "ZYWZTD",
+        expect.objectContaining({
+          extract_rules_mode: "inherit",
+          extract_keep_rules: "",
+          extract_skip_rules: "",
+        }),
       ),
     );
   });
@@ -269,4 +352,28 @@ describe("<MemorySettings />", () => {
       screen.getByRole("spinbutton", { name: "单次提炼最多生成" }),
     ).toBeEnabled();
   });
+});
+
+it("keeps global management links under the dashboard deployment prefix", async () => {
+  api.getExtractConfig.mockResolvedValue(idleConfig);
+  render(
+    <MemoryRouter basename="/octop" initialEntries={["/octop/experts"]}>
+      <CurrentUserProvider
+        user={{
+          id: 1,
+          username: "admin",
+          role: "admin",
+          display_name: null,
+          locale: "zh",
+        }}
+        setUser={vi.fn()}
+      >
+        <MemorySettings agentId="ZYWZTD" />
+      </CurrentUserProvider>
+    </MemoryRouter>,
+  );
+  const links = await screen.findAllByRole("link", { name: "管理全局默认" });
+  expect(links).toHaveLength(2);
+  for (const link of links)
+    expect(link).toHaveAttribute("href", "/octop/admin/memory");
 });

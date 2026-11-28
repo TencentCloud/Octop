@@ -19,10 +19,10 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.knowledge import rerank as rerank_module
 from octop.infra.knowledge import retrieve as retrieve_module
 from octop.infra.knowledge.index import KnowledgeIndex
+from octop.infra.knowledge.model_options import remote_models
 from octop.infra.knowledge.rerank import (
     candidate_count,
     get_rerank_capability,
-    rerank_models,
     rerank_scores,
     set_rerank_settings,
 )
@@ -71,7 +71,7 @@ def _enabled_settings() -> _Settings:
 
 
 def test_only_rerank_models_are_offered() -> None:
-    assert rerank_models(_provider()) == [
+    assert remote_models(_provider(), "rerank") == [
         {"id": "BAAI/bge-reranker-v2-m3", "name": "BGE Reranker"},
         {"id": "custom-ranker", "name": "custom-ranker"},
     ]
@@ -117,6 +117,7 @@ def test_enabling_saves_the_choice() -> None:
         (_provider(), "9", "custom-ranker"),
         (_provider(enabled=False), "3", "custom-ranker"),
         (_provider(api_key=""), "3", "custom-ranker"),
+        (_provider(get_models=lambda: [{"id": "rerank-1", "enabled": False}]), "3", "rerank-1"),
     ],
 )
 def test_enabling_needs_a_provider_that_serves_the_model(
