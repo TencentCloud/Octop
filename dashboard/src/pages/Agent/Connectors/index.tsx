@@ -15,7 +15,6 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
-  Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -59,7 +58,7 @@ import {
 import { ConnectorCard } from "./ConnectorCard";
 import { AgentlyAuth } from "./AgentlyAuth";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
-import { CustomMcpTab } from "./CustomMcpTab";
+import { CustomMcpDrawer } from "./CustomMcpDrawer";
 import {
   INLINE_CREDENTIAL_GUIDE_KINDS,
   HIDE_INLINE_FIELD_GUIDE_KINDS,
@@ -1293,7 +1292,7 @@ function ConnectorConfigDrawer({
       }
       open={open}
       onClose={onClose}
-      width={isMobile ? "100%" : 480}
+      width={isMobile ? "100%" : 520}
       destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -2354,12 +2353,11 @@ function ConnectorConfigDrawer({
   );
 }
 
-type ConnectorTab = "enabled" | "builtin" | "custom";
+type ConnectorTab = "enabled" | "builtin";
 
 const CONNECTOR_TABS: TabBarItem<ConnectorTab>[] = [
   { key: "enabled", labelKey: "connectors.tabEnabled", icon: Link2 },
   { key: "builtin", labelKey: "connectors.tabBuiltin", icon: Blocks },
-  { key: "custom", labelKey: "connectors.tabCustom", icon: Wrench },
 ];
 
 export default function ConnectorsPage() {
@@ -2372,11 +2370,14 @@ export default function ConnectorsPage() {
   );
   const [drawerInstance, setDrawerInstance] =
     useState<ConnectorInstance | null>(null);
-  const [customFocusServerName, setCustomFocusServerName] = useState<
-    string | null
-  >(null);
+  const [customDrawer, setCustomDrawer] = useState<{
+    open: boolean;
+    serverName: string | null;
+    avatarUrl: string | null;
+  }>({ open: false, serverName: null, avatarUrl: null });
   const { catalog, instances, loading, refresh } = useConnectorInstances();
   const user = useCurrentUser();
+  const canAddCustom = userCan(user, "connector_custom");
   const visibleConnectorTabs = useMemo(
     () =>
       CONNECTOR_TABS.filter((tab) =>
@@ -2536,16 +2537,11 @@ export default function ConnectorsPage() {
         <TabBar
           tabs={visibleConnectorTabs}
           activeKey={resolvedConnectorTab}
-          onChange={(key) => {
-            if (key === "custom") setCustomFocusServerName(null);
-            setActiveTab(key);
-          }}
+          onChange={setActiveTab}
         />
       }
     >
-      {resolvedConnectorTab === "custom" ? (
-        <CustomMcpTab focusServerName={customFocusServerName} />
-      ) : resolvedConnectorTab === "enabled" ? (
+      {resolvedConnectorTab === "enabled" ? (
         loading ? (
           <div className={styles.loadingState}>
             <Spin />
@@ -2580,15 +2576,21 @@ export default function ConnectorsPage() {
                     onClick: () => setActiveTab("builtin"),
                     icon: <Plug size={14} />,
                   }}
-                  secondaryAction={{
-                    label: t("connectors.emptyGuideAddCustom"),
-                    onClick: () => {
-                      setCustomFocusServerName(null);
-                      setActiveTab("custom");
-                    },
-                    icon: <Plus size={14} />,
-                    type: "default",
-                  }}
+                  secondaryAction={
+                    canAddCustom
+                      ? {
+                          label: t("connectors.addCustom", "添加自定义连接器"),
+                          onClick: () =>
+                            setCustomDrawer({
+                              open: true,
+                              serverName: null,
+                              avatarUrl: null,
+                            }),
+                          icon: <Plus size={14} />,
+                          type: "default",
+                        }
+                      : undefined
+                  }
                 />
               </div>
             ) : (
@@ -2608,13 +2610,30 @@ export default function ConnectorsPage() {
                       }
                     />
                   </div>
-                  <Button
-                    icon={<RefreshCw size={14} />}
-                    loading={loading}
-                    onClick={() => void refresh()}
-                  >
-                    {t("common.refresh")}
-                  </Button>
+                  <div className={styles.listToolbarActions}>
+                    {canAddCustom ? (
+                      <Button
+                        type="primary"
+                        icon={<Plus size={14} />}
+                        onClick={() =>
+                          setCustomDrawer({
+                            open: true,
+                            serverName: null,
+                            avatarUrl: null,
+                          })
+                        }
+                      >
+                        {t("connectors.addCustom", "添加自定义连接器")}
+                      </Button>
+                    ) : null}
+                    <Button
+                      icon={<RefreshCw size={14} />}
+                      loading={loading}
+                      onClick={() => void refresh()}
+                    >
+                      {t("common.refresh")}
+                    </Button>
+                  </div>
                 </div>
                 {categoryPills}
                 {visibleInstances.length === 0 ? (
@@ -2636,8 +2655,11 @@ export default function ConnectorsPage() {
                         )}
                         onEdit={(item) => {
                           if (item.kind === "custom-mcp") {
-                            setCustomFocusServerName(item.mcp_server_name);
-                            setActiveTab("custom");
+                            setCustomDrawer({
+                              open: true,
+                              serverName: item.mcp_server_name,
+                              avatarUrl: item.avatar_url ?? null,
+                            });
                             return;
                           }
                           const entry = catalog.find(
@@ -2705,6 +2727,19 @@ export default function ConnectorsPage() {
           if (created) setDrawerInstance(created);
           void handleSaved();
         }}
+      />
+      <CustomMcpDrawer
+        open={customDrawer.open}
+        serverName={customDrawer.serverName}
+        avatarUrl={customDrawer.avatarUrl}
+        onClose={() =>
+          setCustomDrawer({
+            open: false,
+            serverName: null,
+            avatarUrl: null,
+          })
+        }
+        onSaved={handleSaved}
       />
     </PageShell.Tabbed>
   );

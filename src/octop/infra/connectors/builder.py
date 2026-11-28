@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import secrets
 from typing import Any
@@ -19,6 +18,7 @@ from octop.infra.connectors.catalog import (
 )
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
+from octop.infra.utils.host_dirs import assert_safe_host_file
 from octop.infra.utils.ulid import new_ulid
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
@@ -376,9 +376,7 @@ def _obsidian_cli_credentials(credentials: dict[str, Any]) -> dict[str, Any]:
     binary_path = str(credentials.get("binary_path") or "").strip()
     if binary_path:
         _reject_obsidian_control_chars("binary_path", binary_path)
-        if not os.path.isfile(binary_path):
-            raise ValueError("binary_path must be an existing file")
-        out["binary_path"] = binary_path
+        out["binary_path"] = assert_safe_host_file(binary_path, restrict_to_home=False)
     return out
 
 

@@ -1,4 +1,48 @@
 {
+  "cls_cli": {
+    "environment_incomplete": "Check the region, Trace Topic ID, access type and Tencent Cloud credentials in the Octop server environment.",
+    "saved_incomplete": "Complete the saved CLS settings with octop cls configure before testing.",
+    "token_required": "Set OCTOP_ACCESS_TOKEN to an Octop access token with observability permission.",
+    "token": "Octop access token",
+    "connection": "Could not reach the Octop server ({reason}).",
+    "invalid_response": "Expected a JSON object from the Octop server.",
+    "unchecked": "unverified",
+    "yes": "yes",
+    "no": "no",
+    "active_backend": "Active tracing backend",
+    "source": "CLS configuration source",
+    "enabled": "Enabled",
+    "region": "Region",
+    "topic_id": "Trace Topic ID",
+    "application_id": "Application ID",
+    "application_name": "Application name",
+    "access_type": "Access type",
+    "use_internal_endpoint": "Internal endpoint",
+    "mask_content": "Mask trace content",
+    "secret_id_masked": "SecretId (masked)",
+    "secret_id_set": "SecretId set",
+    "secret_key_set": "SecretKey set",
+    "configured": "Configuration complete and enabled",
+    "endpoint": "Trace endpoint",
+    "ok": "Connection test passed",
+    "api_ok": "Management API accessible",
+    "otlp_ok": "Trace endpoint accepted probe",
+    "error": "Error",
+    "pair_required": "Set both TENCENTCLOUD_SECRET_ID and TENCENTCLOUD_SECRET_KEY, or enter the credentials interactively.",
+    "sts": "For STS credentials, configure the Octop server environment including TENCENTCLOUD_TOKEN. Saved CLS settings require a long-lived key pair.",
+    "replace_keys": "Replace the saved Tencent Cloud credentials ({masked})?",
+    "no_apps": "No applications with a Trace Topic in this region. You can supply --topic-id directly.",
+    "select_app": "Choose an application number",
+    "mode_conflict": "Choose one of --new and --existing.",
+    "topic_conflict": "Use --existing with --topic-id.",
+    "mode": "Create an application (new) or bind a topic (existing)",
+    "binding": "Enter a Topic ID (topic) or select an application (list)",
+    "topic_required": "Supply --topic-id to bind an existing Trace Topic.",
+    "switch_backend": "Saving this configuration switches the active tracing backend from Langfuse to CLS.",
+    "bound": "Bound Trace Topic {topic} in {region}. CLS tracing is enabled.",
+    "created": "Created {name} in {region}. CLS tracing is enabled for Topic {topic}.",
+    "reused": "Reused {name} in {region}. CLS tracing is enabled for Topic {topic}."
+  },
   "slash": {
     "error": {
       "unknown_command": "Unknown command: /{name}. Type /help for available commands."
@@ -343,6 +387,7 @@
     }
   },
   "connector": {
+    "probe_failed": "Connector probe failed. Check the server logs for details.",
     "oauth": {
       "callback_auth_failed": "Authorization failed: {error}",
       "callback_missing_params": "Missing authorization code or state.",
@@ -435,6 +480,7 @@
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
     "CODEX_OAUTH_START_FAILED": "Could not start ChatGPT sign-in. Check the server connection to auth.openai.com and try again.",
+    "MEMORY_SERVICE_CONFLICT": "Memory service conflict. Check the space binding or token state.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "RESOURCE_NOT_ALLOWED": "You do not have access to this resource.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
@@ -751,7 +797,10 @@
         "ak": "AK",
         "sk": "SK",
         "agent_id": "Agent ID",
-        "host": "Broker Host"
+        "host": "Broker Host",
+        "access_token": "Access Token",
+        "phone_number_id": "Phone Number ID",
+        "bridge_url": "Bridge URL"
       },
       "discord_invalid_token": "Discord rejected the Bot Token. Reset it on the Bot page and update the configuration.",
       "discord_intents_required": "Enable Message Content Intent on the Discord application Bot page.",
@@ -835,7 +884,8 @@
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models.",
     "model_call_failed_detail": "The model call failed: {detail}",
     "model_retry_prompt": "The model API request failed. Do not pretend the task succeeded.\n\nWhat happened: {guidance}\n\nExplain this to the user in their language and suggest the next step. Do not retry the same failing request unchanged.\n\nTechnical detail: {detail}",
-    "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data)."
+    "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data).",
+    "database_corrupt": "A local SQLite database file appears corrupted (database disk image is malformed). This is not a model configuration issue. Stop Octop and run `octop doctor db` to locate the damaged file, then run `octop doctor db --fix` to repair it (see logs/octop.log for details)."
   },
   "attachment": {
     "header": "[Attachment] {filename}",
@@ -1095,7 +1145,8 @@
     "error_health": "Laya did not become ready in time. Copy the log and send it to Octop.",
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
-    "error_stalled": "The install produced no result for too long and was stopped."
+    "error_stalled": "The install produced no result for too long and was stopped.",
+    "error_failed": "The install failed unexpectedly. Check the server logs for details."
   },
   "text_assist": {
     "kinds": {

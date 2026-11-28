@@ -26,6 +26,7 @@ Commands:
   bridge     Manage remote Octop bridge peers.
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
+  cls        Configure and test Tencent Cloud CLS tracing.
   channel    Channel management commands.
   clean      Remove CLI state or wipe all of ~/.octop.
   completion Shell completion utilities.
@@ -69,6 +70,43 @@ Octop commands pick one of these transports:
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
+
+## `octop cls`
+
+Use a running Octop server and an Octop access token with the `observability`
+permission (the `access_token` from `POST /api/auth/login`). Set
+`OCTOP_ACCESS_TOKEN` in scripts or enter the token at the hidden terminal prompt.
+The default server is `http://127.0.0.1:8088`. For another server, set
+`OCTOP_SERVER_URL` or use `octop cls --server-url https://octop.example.com show`.
+
+```bash
+octop cls configure
+octop cls configure --new --region ap-guangzhou --app-name octop-prod
+octop cls configure --existing --region ap-guangzhou --topic-id YOUR_TRACE_TOPIC_ID
+octop cls show
+octop --json cls test
+```
+
+The wizard offers a new application, an existing Trace Topic ID, or a selection
+from the region's applications. The new-application flow reuses a matching name
+and access type on a repeat run. Binding a known Topic ID works with push-only
+credentials. Saving enables CLS tracing immediately and switches an active
+Langfuse backend to CLS.
+
+Enter the Tencent Cloud SecretId and SecretKey at the hidden prompts, or supply
+`TENCENTCLOUD_SECRET_ID` and `TENCENTCLOUD_SECRET_KEY` together for scripting.
+Omitting credentials reuses the saved pair. Use `--access-type Langfuse|Agent`,
+`--internal` / `--public`, and `--mask-content` / `--no-mask-content` to change
+the saved options. For STS, use the server's CLS environment configuration,
+including `TENCENTCLOUD_TOKEN`.
+
+`show` identifies the active backend and displays masked settings. `test` probes
+the management API and the configured OTLP ingestion endpoint from the server.
+Both use the server's environment when its active backend is `cls_env`.
+`configure` saves to the database. When switching from environment-based
+tracing, it retains the active region, access type, endpoint and masking options
+and uses a saved or explicitly supplied long-lived credential pair. All three commands accept
+the global `--json` option before `cls`. A failed probe exits with status 1.
 
 ## `octop init`
 

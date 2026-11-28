@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, InboundMessage, MessageEvent, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.processor import GlobalProcessor
@@ -14,12 +15,21 @@ from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 
 
 @pytest.mark.asyncio
-async def test_im_call_merges_default_open_mcp_servers() -> None:
-    captured: dict[str, object] = {}
+@pytest.mark.parametrize(
+    ("allowed_tools", "has_allowed_tools"),
+    [(None, False), (None, True), ([], True), (["web_fetch"], True)],
+    ids=["missing-field", "unrestricted", "deny-all", "allow-list"],
+)
+async def test_im_call_merges_default_open_mcp_servers(
+    allowed_tools: list[str] | None, has_allowed_tools: bool
+) -> None:
+    captured: dict[str, dict[str, object]] = {}
 
-    async def fake_project_stream(_mgr, _aid, request, **_kwargs):
+    async def fake_project_stream(
+        _mgr: object, _aid: str, request: dict[str, object], **_kwargs: object
+    ) -> AsyncIterator[MessageEvent]:
         captured["request"] = request
-        yield MagicMock()
+        yield MessageEvent.completed()
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["docs__1"])
@@ -61,7 +71,11 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
         tenant_id="agent-1",
         channel_subject=ChannelSubject(subject_id="u1"),
         content=[TextContent(text="hello")],
+        allowed_tools=allowed_tools,
     )
+    if not has_allowed_tools:
+        msg.__dict__.pop("allowed_tools", None)
+        assert not hasattr(msg, "allowed_tools")
 
     with patch(
         "octop.infra.gateway.process.processor.project_stream",
@@ -75,15 +89,21 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
     )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
+    if allowed_tools is None:
+        assert "allowed_tools" not in captured["request"]
+    else:
+        assert captured["request"]["allowed_tools"] == allowed_tools
 
 
 @pytest.mark.asyncio
 async def test_im_call_skips_default_open_mcp_for_team_host() -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, dict[str, object]] = {}
 
-    async def fake_project_stream(_mgr, _aid, request, **_kwargs):
+    async def fake_project_stream(
+        _mgr: object, _aid: str, request: dict[str, object], **_kwargs: object
+    ) -> AsyncIterator[MessageEvent]:
         captured["request"] = request
-        yield MagicMock()
+        yield MessageEvent.completed()
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
@@ -137,7 +157,14 @@ async def test_im_call_skips_default_open_mcp_for_team_host() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_request_ignores_explicit_mcp_for_team_host() -> None:
+@pytest.mark.parametrize(
+    ("allowed_tools", "has_allowed_tools"),
+    [(None, False), (None, True), ([], True), (["web_fetch"], True)],
+    ids=["missing-field", "unrestricted", "deny-all", "allow-list"],
+)
+async def test_dashboard_request_ignores_explicit_mcp_for_team_host(
+    allowed_tools: list[str] | None, has_allowed_tools: bool
+) -> None:
     """Team hosts never attach connectors, even when the client sends picks."""
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["docs__1"])
@@ -172,7 +199,11 @@ async def test_dashboard_request_ignores_explicit_mcp_for_team_host() -> None:
         channel_subject=ChannelSubject(subject_id="1"),
         content=[TextContent(text="hi")],
         metadata={"mcp_servers": ["docs__1"]},
+        allowed_tools=allowed_tools,
     )
+    if not has_allowed_tools:
+        msg.__dict__.pop("allowed_tools", None)
+        assert not hasattr(msg, "allowed_tools")
     request = await processor._build_dashboard_request(
         msg,
         agent_id="host-1",
@@ -182,6 +213,10 @@ async def test_dashboard_request_ignores_explicit_mcp_for_team_host() -> None:
         meta=msg.metadata or {},
     )
     assert "mcp_servers" not in request
+    if allowed_tools is None:
+        assert "allowed_tools" not in request
+    else:
+        assert request["allowed_tools"] == allowed_tools
     agent_manager.merge_turn_mcp_servers.assert_not_called()
     agent_manager.prepare_chat_mcp.assert_not_awaited()
 

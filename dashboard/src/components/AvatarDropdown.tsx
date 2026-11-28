@@ -741,7 +741,7 @@ export default function AvatarDropdown({
         open={settingsOpen}
         onClose={closeSettings}
         placement="right"
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.settingsDrawer}
         footer={

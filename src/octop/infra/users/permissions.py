@@ -271,6 +271,7 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page_en="Models",
     ),
     "storage_backends": _p("storage_backends", "admin", "存储", "Storage"),
+    "memory_defaults": _p("memory_defaults", "admin", "记忆", "Memory"),
     "plugins": _p(
         "plugins",
         "admin",

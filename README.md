@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b8-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -66,7 +66,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord,
 
 ## 📌 Overview
 
-Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
+Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, Slack, WhatsApp, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
 
 > Octop's design goal: keep every conversation, workspace, and credential on your own machine, while giving each user a personal team of specialized agents they can switch between per task.
 
@@ -120,7 +120,7 @@ Instead of an external queue or message broker, Octop routes every surface — W
 - Workspace backends (expert files): local disk, Docker sandbox, PostgreSQL, COS/S3, and other remote stores — distinct from the control-plane database
 
 ### Channels & automation
-- IM channels: Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more
+- IM channels: Feishu, DingTalk, QQ, WeChat, Telegram, Discord, Slack, WhatsApp, WeCom, and more
 - Proactive cron jobs with natural-language and slash-command triggers
 - Unified message processing across Web UI, IM, and cron surfaces
 

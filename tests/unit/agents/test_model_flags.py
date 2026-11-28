@@ -132,8 +132,17 @@ def test_chat_eligible_excludes_embedding() -> None:
 
 def test_vision_model_uses_explicit_input_then_known_ids() -> None:
     assert is_vision_model({"id": "custom", "input": ["text", "image"]})
-    assert is_vision_model({"id": "gpt-4o-mini", "input": ["text"]})
+    # Explicit non-empty input is authoritative: unchecking image overrides name hints.
+    assert not is_vision_model({"id": "gpt-4o-mini", "input": ["text"]})
+    assert not is_vision_model({"id": "qwen2.5-vl", "input": ["text"]})
+    assert not is_vision_model({"id": "glm-5-w8a8-vllm-Bige", "input": ["text"]})
+    # Missing or empty input falls back to vision naming conventions.
+    assert is_vision_model({"id": "gpt-4o-mini"})
     assert is_vision_model({"id": "qwen2.5-vl"})
+    assert is_vision_model({"id": "qwen-vl-max", "input": []})
+    assert is_vision_model({"id": "qwen3-vl2"})
+    # `-vllm` must not false-positive on the `-vl` vision token.
+    assert not is_vision_model({"id": "glm-5-w8a8-vllm-Bige"})
     assert not is_vision_model({"id": "text-only", "input": ["text"]})
 
 

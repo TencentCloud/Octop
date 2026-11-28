@@ -83,7 +83,8 @@ octop_signal_pids() {
 # 要释放 8089 时）。不使用宽泛的 `pgrep -f octop`。
 # ---------------------------------------------------------------------------
 free_octop_ports() {
-    local port pid pids pat appdir ports
+    local port pid pids pat appdir ports wait_rounds
+    wait_rounds="${OCTOP_PORT_FREE_WAIT_ROUNDS:-50}"
     if [ "$#" -gt 0 ]; then
         ports="$*"
     else
@@ -96,7 +97,7 @@ free_octop_ports() {
             [ -n "$pid" ] || continue
             echo "[octop] 已发送 TERM 给占用 ${port} 的进程 ${pid}" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
         done
-        octop_wait_pids_gone 10 $pids || true
+        octop_wait_pids_gone "$wait_rounds" $pids || true
         octop_signal_pids KILL $pids
         for pid in $pids; do
             [ -n "$pid" ] || continue
@@ -112,7 +113,7 @@ free_octop_ports() {
         [ -z "$pids" ] && continue
         echo "[octop] 发现本应用残留服务进程（$pat）: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
         octop_signal_pids TERM $pids
-        octop_wait_pids_gone 10 $pids || true
+        octop_wait_pids_gone "$wait_rounds" $pids || true
         octop_signal_pids KILL $pids
     done
 
@@ -122,7 +123,7 @@ free_octop_ports() {
             if [ -n "$pids" ]; then
                 echo "[octop] 发现 fpk-native 残留 run 进程: $pids，准备清理" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
                 octop_signal_pids TERM $pids
-                octop_wait_pids_gone 10 $pids || true
+                octop_wait_pids_gone "$wait_rounds" $pids || true
                 octop_signal_pids KILL $pids
             fi
             ;;

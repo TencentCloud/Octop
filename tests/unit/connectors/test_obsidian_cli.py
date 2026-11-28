@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from octop.infra.connectors.builder import validate_create_credentials
 from octop.infra.connectors.gateway import cli_install
 from octop.infra.connectors.gateway.adapters import obsidian_cli
 
@@ -95,3 +98,25 @@ def test_probe_app_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(obsidian_cli, "run_cli", _run)
     with pytest.raises(ValueError, match="未在运行"):
         obsidian_cli.probe_credentials({"vault": "Notes"})
+
+
+def test_credentials_validate_explicit_binary_path(tmp_path: Path) -> None:
+    binary = tmp_path / "obsidian"
+    binary.write_text("bin", encoding="utf-8")
+    creds = validate_create_credentials(
+        "obsidian-cli",
+        {"vault": "Notes", "binary_path": str(binary)},
+    )
+    assert creds["binary_path"] == os.path.realpath(str(binary))
+
+    with pytest.raises(ValueError, match="existing file"):
+        validate_create_credentials(
+            "obsidian-cli",
+            {"vault": "Notes", "binary_path": str(tmp_path / "missing")},
+        )
+    if os.name == "posix":
+        with pytest.raises(ValueError, match="not allowed"):
+            validate_create_credentials(
+                "obsidian-cli",
+                {"vault": "Notes", "binary_path": "/etc/passwd"},
+            )

@@ -149,7 +149,7 @@ export function formatServerDateTimeSeconds(
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(d);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "00";

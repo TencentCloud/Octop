@@ -22,9 +22,9 @@ jobs:
       matrix:
         python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -39,17 +39,100 @@ jobs:
         run: make typecheck
 
       - name: Test
-        run: make test
+        run: make test PYTEST_JOBS=logical
+
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          # Same Node as deploy/docker/Dockerfile and release.yml.
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Test
+        run: npm test
+
+  # `make install` follows uv.lock. A merged PR can still fail
+  # `pip install octop` when dependency ranges resolve differently in a clean
+  # environment. Build the wheel, install it with pip, and verify the
+  # published console command from an empty environment.
+  command-install:
+    name: Command install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install the wheel with pip (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          uv venv --no-project --python 3.12 --seed /tmp/octop-install
+          wheels=(dist/octop-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "expected one wheel, found: ${wheels[*]}"
+            exit 1
+          fi
+          /tmp/octop-install/bin/python -m pip install --upgrade pip
+          /tmp/octop-install/bin/python -m pip install "${wheels[0]}"
+
+      - name: Install the wheel with pip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          uv venv --no-project --python 3.12 --seed .octop-install
+          $wheels = @(Get-ChildItem -Path dist -Filter "octop-*.whl")
+          if ($wheels.Count -ne 1) {
+            throw "expected one wheel, found: $($wheels.Name -join ', ')"
+          }
+          .\.octop-install\Scripts\python.exe -m pip install --upgrade pip
+          .\.octop-install\Scripts\python.exe -m pip install $wheels[0].FullName
+
+      - name: Verify the installed command (Linux)
+        if: runner.os == 'Linux'
+        run: /tmp/octop-install/bin/octop --help
+
+      - name: Verify the installed command (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\.octop-install\Scripts\octop.exe --help
 
   helm:
     name: Helm chart
     runs-on: ubuntu-latest
     if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: v3.17.3
 
@@ -73,9 +156,9 @@ jobs:
     runs-on: windows-latest
     if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.12"
@@ -90,7 +173,7 @@ jobs:
         run: make typecheck
 
       - name: Test
-        run: make test
+        run: make test PYTEST_JOBS=logical
 
   live-tests:
     name: "Live tests (real credentials)"
@@ -100,9 +183,9 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       !startsWith(github.head_ref, 'chore/sync-develop-after-')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.12"

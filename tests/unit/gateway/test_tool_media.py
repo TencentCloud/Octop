@@ -1034,3 +1034,34 @@ def test_history_attachments_keep_the_live_delivery_path() -> None:
         }
     ]
     assert merge_history_attachments(live, live) == live
+
+
+def test_enrich_history_tool_media_skips_plain_text_inference_for_non_delivery_tools() -> None:
+    """History reload must not turn ls / execute / read_file image paths into image blocks."""
+    from octop.api.routers.chat.serialize import _enrich_history_tool_media
+
+    ls_output = "/Users/alice/.octop/agents/A1/outbound/old_chart.png\nfile: /tmp/old_shot.png"
+    shot_output = "Screenshot saved to /Users/alice/.octop/agents/A1/outbound/screen.png"
+    messages = [
+        {
+            "role": "tool",
+            "content": [
+                {"type": "tool_result", "id": "c1", "name": "ls", "output": ls_output},
+                {"type": "tool_result", "id": "c2", "name": "execute", "output": ls_output},
+                {
+                    "type": "tool_result",
+                    "id": "c3",
+                    "name": "desktop_screenshot",
+                    "output": shot_output,
+                },
+            ],
+        }
+    ]
+
+    enriched = _enrich_history_tool_media(messages, agent_id="A1")
+    blocks = enriched[0]["content"]
+    assert blocks[0]["output"] == ls_output
+    assert blocks[1]["output"] == ls_output
+    parsed_shot = json.loads(blocks[2]["output"])
+    assert isinstance(parsed_shot, list)
+    assert parsed_shot[1]["type"] == "image"

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 
 from octop.infra.agents.settings import acp_host
@@ -199,3 +202,12 @@ async def test_qwen_code_launches_with_acp_flag(monkeypatch: pytest.MonkeyPatch)
     result = await acp_host.acp_host_status(runner="qwen_code", locale="en")
     assert result["status"] == "ready"
     assert "npm install -g @qwen-code/qwen-code" in result["scripts"]["darwin"]
+
+
+def test_which_explicit_path_checks_safe_host_file(tmp_path: Path) -> None:
+    binary = tmp_path / "my-acp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    assert acp_host._which(str(binary), {}) == os.path.realpath(str(binary))
+    assert acp_host._which(str(tmp_path / "missing"), {}) is None
+    if os.name == "posix":
+        assert acp_host._which("/etc/passwd", {}) is None

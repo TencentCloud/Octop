@@ -20,6 +20,9 @@ PID_FILE="${PKGVAR}/octop.pid"
 PORT="${OCTOP_PORT:-8089}"
 BIN="$APPDEST/bin/octop"
 START_WAIT_SECS="${OCTOP_START_WAIT_SECS:-90}"
+# Each round sleeps 0.2s; 100 rounds = 20s so uvicorn / SQLite WAL checkpoints
+# finish cleanly on SIGTERM before falling back to SIGKILL.
+STOP_WAIT_ROUNDS="${OCTOP_STOP_WAIT_ROUNDS:-100}"
 
 if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
     DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
@@ -189,7 +192,7 @@ stop_process() {
                 kill -TERM "$pid" 2>/dev/null || true
             fi
             local i
-            for i in $(seq 1 15); do
+            for i in $(seq 1 "$STOP_WAIT_ROUNDS"); do
                 if ! kill -0 "$pid" 2>/dev/null && ! port_ready; then
                     break
                 fi

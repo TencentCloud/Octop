@@ -14,6 +14,7 @@ from octop.infra.agents.providers.headers import (
     session_header_for_provider,
 )
 from octop.infra.agents.providers.model_flags import (
+    has_vision_name_hint,
     is_chat_eligible_model,
     is_local_runtime_provider,
     is_rerank_model,
@@ -236,19 +237,15 @@ def _infer_model_input_modalities(
     model_id: str,
     explicit: list[str] | None = None,
 ) -> list[str]:
-    """Merge stored ``input`` with id-based heuristics (vision/audio)."""
-    lower = model_id.lower()
-    inputs: set[str] = set(explicit or ["text"])
-    inputs.add("text")
-    if (
-        "-vl" in lower
-        or "vision" in lower
-        or "-image" in lower
-        or "gpt-4o" in lower
-        or "gpt-4.1" in lower
-        or "claude-3" in lower
-        or "gemini" in lower
-    ):
+    """Return explicit ``input`` modalities, or infer from *model_id* when omitted."""
+    cleaned = [str(m).strip().lower() for m in (explicit or []) if str(m).strip()]
+    if cleaned:
+        inputs: set[str] = set(cleaned)
+        inputs.add("text")
+        return sorted(inputs)
+    lower = model_id.strip().lower()
+    inputs = {"text"}
+    if has_vision_name_hint(lower):
         inputs.add("image")
     if "audio" in lower or "whisper" in lower:
         inputs.add("audio")
@@ -384,7 +381,7 @@ class ProviderStore:
         data = dict(raw)
         model_id = str(data.get("id") or "")
         explicit = data.get("input")
-        inputs = list(explicit) if isinstance(explicit, list) else ["text"]
+        inputs = [str(m) for m in explicit] if isinstance(explicit, list) else None
         data["input"] = _infer_model_input_modalities(model_id, inputs)
         # ModelConfig keeps total context, prompt cap, and output cap distinct,
         # while still accepting legacy rows that only contain one context key.

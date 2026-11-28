@@ -546,13 +546,65 @@ function mediaBlocksFromParsed(parsed: unknown): Record<string, unknown>[] {
   return [];
 }
 
+/**
+ * Only these tools may push media into the reply area or infer image paths from
+ * plain-text output / call arguments. Mirrors backend ``MEDIA_PUSH_TOOL_BASES``.
+ */
+export const MEDIA_PUSH_TOOL_BASES = new Set([
+  "send_file",
+  "send_file_to_user",
+  "desktop_screenshot",
+  "mobile_screenshot",
+  "generate_image",
+  "generate_video",
+]);
+
+export function toolNameBase(name: string | undefined | null): string {
+  const trimmed = (name || "").trim();
+  const slash = trimmed.lastIndexOf("/");
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+}
+
+/** True when this tool is allowed to push files/images to the user. */
+export function isMediaPushTool(name: string | undefined | null): boolean {
+  return MEDIA_PUSH_TOOL_BASES.has(toolNameBase(name).toLowerCase());
+}
+
+function hasOctopDeliveryMarker(rawOutput: string | undefined): boolean {
+  if (!rawOutput?.trim()) return false;
+  const trimmed = rawOutput.trim();
+  if (trimmed[0] !== "{" && trimmed[0] !== "[") return false;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return mediaBlocksFromParsed(parsed).some(
+      (block) => block.octop_delivery === "send_file_to_user",
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when a tool call is allowed to surface media in the assistant reply area.
+ * Matches allowlisted delivery tools or the managed ``octop_delivery`` marker.
+ */
+export function toolDeliversMedia(
+  toolData: { name?: string; output?: string } | undefined,
+): boolean {
+  if (!toolData) return false;
+  if (isMediaPushTool(toolData.name)) return true;
+  return hasOctopDeliveryMarker(toolData.output);
+}
+
 export function parseStructuredToolOutput(
   rawOutput: string | undefined,
   agentId?: string | null,
+  options?: { inferPlainTextImage?: boolean },
 ): StructuredToolMedia {
   if (!rawOutput) {
     return { images: [], videos: [], files: [], textOutput: "" };
   }
+  const inferPlainTextImage = options?.inferPlainTextImage === true;
 
   try {
     const parsed = JSON.parse(rawOutput);
@@ -568,7 +620,7 @@ export function parseStructuredToolOutput(
           feedback,
         };
       }
-      return fallbackTextToolMedia(rawOutput, agentId);
+      return fallbackTextToolMedia(rawOutput, agentId, inferPlainTextImage);
     }
 
     const images: ToolMediaItem[] = [];
@@ -672,7 +724,7 @@ export function parseStructuredToolOutput(
     }
 
     const textOutput = textParts.join("\n").trim();
-    if (images.length === 0 && agentId && textOutput) {
+    if (inferPlainTextImage && images.length === 0 && agentId && textOutput) {
       const path = extractImagePathFromText(textOutput);
       if (path) {
         images.push(imageItemFromPath(agentId, path));
@@ -687,7 +739,7 @@ export function parseStructuredToolOutput(
       feedback,
     };
   } catch {
-    return fallbackTextToolMedia(rawOutput, agentId);
+    return fallbackTextToolMedia(rawOutput, agentId, inferPlainTextImage);
   }
 }
 
@@ -777,13 +829,14 @@ function dedupeByUrl<T extends { url: string }>(items: T[]): T[] {
   });
 }
 
-/** When tool output is plain text (e.g. browser screenshot summary), infer image path. */
+/** When tool output is plain text (e.g. screenshot summary), infer image path if allowed. */
 function fallbackTextToolMedia(
   rawOutput: string,
   agentId?: string | null,
+  inferPlainTextImage = false,
 ): StructuredToolMedia {
   const images: ToolMediaItem[] = [];
-  if (agentId) {
+  if (inferPlainTextImage && agentId) {
     const path = extractImagePathFromText(rawOutput);
     if (path) {
       images.push(imageItemFromPath(agentId, path));
@@ -795,12 +848,13 @@ function fallbackTextToolMedia(
 export function collectToolMediaFromOutput(
   output: string | undefined,
   agentId?: string | null,
+  options?: { inferPlainTextImage?: boolean },
 ): {
   images: ToolMediaItem[];
   videos: ToolMediaItem[];
   files: Array<{ url: string; filename?: string }>;
 } {
-  const structured = parseStructuredToolOutput(output, agentId);
+  const structured = parseStructuredToolOutput(output, agentId, options);
   return {
     images: structured.images,
     videos: structured.videos,
@@ -823,12 +877,15 @@ export function collectToolMediaFromToolData(
   videos: ToolMediaItem[];
   files: Array<{ url: string; filename?: string }>;
 } {
-  const fromOutput = collectToolMediaFromOutput(toolData?.output, agentId);
+  const allowPlainTextInference = isMediaPushTool(toolData?.name);
+  const fromOutput = collectToolMediaFromOutput(toolData?.output, agentId, {
+    inferPlainTextImage: allowPlainTextInference,
+  });
   const images = [...fromOutput.images];
   const videos = [...fromOutput.videos];
   const files = [...fromOutput.files];
 
-  if (agentId && toolData) {
+  if (allowPlainTextInference && agentId && toolData) {
     const argPath = extractImagePathFromToolArgs(toolData.arguments);
     if (argPath) {
       const already = images.some(

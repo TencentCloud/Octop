@@ -327,7 +327,7 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
         title={detail?.name || detail?.id}
         open={!!detail}
         onClose={() => setDetailId(null)}
-        width={500}
+        width={520}
         destroyOnHidden
       >
         {detail ? (
@@ -406,7 +406,7 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
         title={configTool?.name}
         open={!!configTool}
         onClose={() => setConfigTool(null)}
-        width={420}
+        width={520}
         destroyOnHidden
         extra={
           <Button

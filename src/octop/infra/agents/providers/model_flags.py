@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # LocalServiceCard creates the ONNX provider with ``api_key=preset.id`` ("onnx").
@@ -24,6 +25,17 @@ _EMBEDDING_NAME_HINTS = (
 # Rerankers must be checked *before* the embedding hints (the "bge-" family
 # spans both) and excluded from chat pickers as well.
 _RERANK_NAME_HINTS = ("rerank",)
+# Match ``vl`` as a standalone token (``qwen2.5-vl``, ``qwen-vl-max``, ``qwen3-vl2``)
+# without matching unrelated words that start with ``vl`` such as ``-vllm``.
+_VISION_VL_RE = re.compile(r"(?:^|[-_/])vl(?=$|[-_/\d])")
+_VISION_NAME_HINTS = (
+    "vision",
+    "-image",
+    "gpt-4o",
+    "gpt-4.1",
+    "claude-3",
+    "gemini",
+)
 
 
 def is_onnx_local_provider(
@@ -139,26 +151,32 @@ def is_embedding_model(
     return is_onnx_local_provider(provider_name, provider_api_key=provider_api_key)
 
 
-def is_vision_model(model: dict[str, Any]) -> bool:
-    """True when a model entry declares or conventionally supports image input."""
-    model_id = str(model.get("id") or "").strip().lower()
-    raw_input = model.get("input")
-    if isinstance(raw_input, list) and any(
-        str(modality).strip().lower() == "image" for modality in raw_input
-    ):
+def has_vision_name_hint(model_id: str) -> bool:
+    """True when *model_id* matches a known vision-capable naming convention."""
+    lower = model_id.strip().lower()
+    if not lower:
+        return False
+    if _VISION_VL_RE.search(lower):
         return True
-    return any(
-        hint in model_id
-        for hint in (
-            "-vl",
-            "vision",
-            "-image",
-            "gpt-4o",
-            "gpt-4.1",
-            "claude-3",
-            "gemini",
-        )
-    )
+    return any(hint in lower for hint in _VISION_NAME_HINTS)
+
+
+def is_vision_model(model: dict[str, Any]) -> bool:
+    """True when a model entry declares or conventionally supports image input.
+
+    An explicit non-empty ``input`` list is authoritative so manually
+    unchecking image support in model settings takes effect even when the model
+    id matches a vision naming convention. Name hints apply only when ``input``
+    is absent or empty.
+    """
+    raw_input = model.get("input")
+    if isinstance(raw_input, list):
+        modalities = [
+            str(modality).strip().lower() for modality in raw_input if str(modality).strip()
+        ]
+        if modalities:
+            return "image" in modalities
+    return has_vision_name_hint(str(model.get("id") or ""))
 
 
 def is_chat_eligible_model(

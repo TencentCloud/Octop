@@ -225,11 +225,11 @@ def backend_spec_supports_execution(spec: Any) -> bool:
     if spec is None:
         return True
     if isinstance(spec, str):
-        return spec in {"local_shell", "docker", "opensandbox"}
+        return spec in {"local_shell", "docker", "opensandbox", "cubesandbox"}
     if not isinstance(spec, dict):
         return False
     kind = spec.get("type")
-    if kind in {"local_shell", "docker", "opensandbox"}:
+    if kind in {"local_shell", "docker", "opensandbox", "cubesandbox"}:
         return True
     if kind == "composite":
         if backend_spec_supports_execution(spec.get("default")):

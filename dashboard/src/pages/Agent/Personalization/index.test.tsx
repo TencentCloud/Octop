@@ -5,6 +5,7 @@
  */
 
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,7 +32,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => navigate,
+}));
 
 vi.mock("../../../context/AgentContext", () => ({
   useAgent: () => agentState,
@@ -80,6 +84,14 @@ vi.mock("../Channels/ChannelsPanel", () => panel("channels"));
 
 import PersonalizationPage from "./index";
 
+function renderPage(path = "/personalization/skills") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <PersonalizationPage />
+    </MemoryRouter>,
+  );
+}
+
 const sharedByOther: TestAgent = {
   agent_id: "shared-1",
   name: "Someone else's expert",
@@ -103,7 +115,7 @@ describe("PersonalizationPage expert ownership", () => {
     agentState.agents = [sharedByOther];
     agentState.activeAgentId = sharedByOther.agent_id;
 
-    render(<PersonalizationPage />);
+    renderPage();
 
     expect(screen.getByText("chat.noAgentsTitle")).toBeInTheDocument();
     expect(screen.queryByText(/shared-1/)).not.toBeInTheDocument();
@@ -111,11 +123,20 @@ describe("PersonalizationPage expert ownership", () => {
     expect(navigate).toHaveBeenCalledWith("/experts");
   });
 
+  it("opens terminal access without assigning a shared expert to the user", () => {
+    agentState.agents = [sharedByOther];
+    agentState.activeAgentId = sharedByOther.agent_id;
+    tabState.activeTab = "memory";
+    renderPage("/personalization/memory/mcp");
+    expect(screen.getByText("memory:none")).toBeInTheDocument();
+    expect(screen.queryByText(/shared-1/)).not.toBeInTheDocument();
+  });
+
   it("never hands a shared expert to the panels", () => {
     agentState.agents = [sharedByOther, mine];
     agentState.activeAgentId = sharedByOther.agent_id;
 
-    render(<PersonalizationPage />);
+    renderPage();
 
     expect(screen.getByText("skills:none")).toBeInTheDocument();
     expect(screen.queryByText(/shared-1/)).not.toBeInTheDocument();
@@ -125,7 +146,7 @@ describe("PersonalizationPage expert ownership", () => {
     agentState.agents = [sharedByOther, mine];
     agentState.activeAgentId = mine.agent_id;
 
-    render(<PersonalizationPage />);
+    renderPage();
 
     for (const name of ["skills", "tools", "plugins", "memory", "channels"]) {
       expect(screen.getAllByText(`${name}:mine-1`).length).toBeGreaterThan(0);
@@ -139,7 +160,7 @@ describe("PersonalizationPage expert ownership", () => {
     agentState.activeAgentId = null;
     agentState.loading = true;
 
-    render(<PersonalizationPage />);
+    renderPage();
 
     expect(screen.queryByText("chat.noAgentsTitle")).not.toBeInTheDocument();
   });
@@ -155,7 +176,7 @@ describe("PersonalizationPage expert ownership", () => {
     agentState.activeAgentId = myTeam.agent_id;
     tabState.activeTab = "memory";
 
-    render(<PersonalizationPage />);
+    renderPage();
 
     expect(screen.getByText("memory:team-1")).toBeInTheDocument();
   });

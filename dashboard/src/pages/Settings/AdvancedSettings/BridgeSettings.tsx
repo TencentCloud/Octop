@@ -1832,7 +1832,7 @@ export default function BridgeSettingsPanel({
         title={t("advancedSettings.bridge.add")}
         open={createOpen}
         onClose={closeCreateDrawer}
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         placement="right"
         destroyOnHidden
         className={styles.createDrawer}
@@ -2065,7 +2065,7 @@ export default function BridgeSettingsPanel({
         title={t("advancedSettings.bridge.editTitle")}
         open={editOpen}
         onClose={closeEditDrawer}
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnClose
         footer={
           <div className={styles.drawerFooter}>

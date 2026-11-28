@@ -280,3 +280,24 @@ def test_format_stream_error_empty_exception_still_localized() -> None:
     assert text
     assert "模型调用失败" in text
     assert "TimeoutError" in text
+
+
+def test_classify_and_format_sqlite_corruption() -> None:
+    import sqlite3
+
+    from octop.i18n.domains.stream import DATABASE_CORRUPT
+
+    assert classify_stream_error_message("database disk image is malformed") == DATABASE_CORRUPT
+    assert classify_stream_error_message("file is not a database") == DATABASE_CORRUPT
+
+    zh = format_stream_error(sqlite3.DatabaseError("database disk image is malformed"), "zh")
+    assert "模型调用失败" not in zh
+    assert "SQLite" in zh
+    assert "octop doctor db --fix" in zh
+
+    wrapped = RuntimeError("stream failed")
+    wrapped.__cause__ = sqlite3.DatabaseError("database disk image is malformed")
+    en = format_stream_error(wrapped, "en")
+    assert "model call failed" not in en.lower()
+    assert "SQLite" in en
+    assert "octop doctor db --fix" in en

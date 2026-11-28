@@ -27,6 +27,7 @@ import { ApiResponseError } from "../../../../../api/responseError";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel, providerHasCredential } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { inferInputModalities } from "../../wizardModelMeta";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -1072,7 +1073,10 @@ export function ProviderConfigModal({
         id: m.id,
         name: m.name || m.id,
         enabled: false,
-        input: ["text"],
+        input:
+          provider.purpose === "embedding" || isEmbeddingModel(m)
+            ? ["text"]
+            : inferInputModalities(m.id, m.input),
         thinking: null,
       }));
       setDraftModels((prev) => [...prev, ...added]);

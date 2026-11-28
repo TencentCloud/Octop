@@ -17,7 +17,15 @@ function storageBrandIcon(kind: string): ReactNode {
       width={36}
       height={36}
       draggable={false}
-      style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        objectFit:
+          kind === "opensandbox" || kind === "cubesandbox"
+            ? "contain"
+            : "cover",
+      }}
     />
   );
 }
@@ -90,6 +98,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "postgres",
   "docker",
   "opensandbox",
+  "cubesandbox",
 ]);
 
 export function isAgentResolvableStorageKind(kind: string): boolean {
@@ -391,6 +400,22 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     ],
   },
   {
+    kind: "cubesandbox",
+    nameKey: "storage.kindCubesandbox",
+    descKey: "storage.descCubesandbox",
+    color: "#4338ca",
+    icon: storageBrandIcon("cubesandbox"),
+    fields: [
+      {
+        key: "bucket",
+        labelKey: "storage.cubesandboxTemplateLabel",
+        requiredMessageKey: "storage.cubesandboxTemplateRequired",
+        required: true,
+        placeholder: "tpl-…",
+      },
+    ],
+  },
+  {
     kind: "postgres",
     nameKey: "storage.kindPostgres",
     descKey: "storage.descPostgres",
@@ -522,7 +547,7 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
   {
     id: "sandbox",
     titleKey: "storage.groupSandbox",
-    kinds: ["docker", "opensandbox"],
+    kinds: ["docker", "opensandbox", "cubesandbox"],
   },
   {
     id: "database",

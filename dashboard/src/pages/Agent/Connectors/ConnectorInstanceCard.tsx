@@ -13,6 +13,10 @@ import {
   type ConnectorInstance,
 } from "../../../api/modules/connectors";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import {
+  CONNECTOR_AVATAR_PRESETS,
+  ResourceAvatar,
+} from "../../../components/AvatarPicker";
 import { ConnectorLogo, connectorAccent } from "./connectorDefs";
 import styles from "./index.module.less";
 
@@ -88,25 +92,37 @@ export function ConnectorInstanceCard({
             ownerName={ownerLabel}
           >
             <div className={styles.typeCardIconLarge}>
-              <ConnectorLogo
-                kind={instance.kind}
-                icon={catalogEntry?.icon}
-                size={40}
-              />
+              {instance.kind === "custom-mcp" &&
+              (instance.avatar_url || instance.avatar_icon) ? (
+                <ResourceAvatar
+                  url={instance.avatar_url}
+                  icon={instance.avatar_icon}
+                  presets={CONNECTOR_AVATAR_PRESETS}
+                  className={styles.customMcpAvatarMark}
+                />
+              ) : (
+                <ConnectorLogo
+                  kind={instance.kind}
+                  icon={catalogEntry?.icon}
+                  size={40}
+                />
+              )}
             </div>
           </SharedAvatarMark>
           <div className={styles.typeCardTitleCol}>
-            <Typography.Text
-              className={styles.typeCardTitle}
-              ellipsis={{ tooltip: instance.display_name }}
-            >
-              {instance.display_name}
-            </Typography.Text>
-            <SharedResourceBadge
-              shared={instance.shared && isOwner}
-              owned
-              ownerName={ownerLabel}
-            />
+            <div className={styles.typeCardTitleRow}>
+              <Typography.Text
+                className={styles.typeCardTitle}
+                ellipsis={{ tooltip: instance.display_name }}
+              >
+                {instance.display_name}
+              </Typography.Text>
+              <SharedResourceBadge
+                shared={instance.shared && isOwner}
+                owned
+                ownerName={ownerLabel}
+              />
+            </div>
           </div>
           <div
             className={styles.instanceCardHeaderActions}

@@ -12,11 +12,11 @@ The longer multi-replica guide is [docs/cluster_CN.md](../../../docs/cluster_CN.
 
 ## Where to install from
 
-Install the chart from GHCR. A clone is not required. The chart sits next to the image. There is no separate HTTP Helm repository. A `v*` tag publishes the package. `appVersion` is the image tag, for example `1.0.3b7`. Helm chart `version` must be SemVer, so `1.0.3b7` is published as `1.0.3-b7` and `1.0.3` stays `1.0.3`. The published `appVersion` is already the image tag, so the install does not set `image.tag`.
+Install the chart from GHCR. A clone is not required. The chart sits next to the image. There is no separate HTTP Helm repository. A `v*` tag publishes the package. `appVersion` is the image tag, for example `1.0.3b8`. Helm chart `version` must be SemVer, so `1.0.3b8` is published as `1.0.3-b8` and `1.0.3` stays `1.0.3`. The published `appVersion` is already the image tag, so the install does not set `image.tag`.
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -25,11 +25,11 @@ Edit chart source in `deploy/helm/octop` and install that directory from the rep
 
 ## What you set
 
-The chart does not store passwords and does not create Secrets from values. Published defaults are `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b7`. In this repository, `values.example.yaml` is the same knobs with comments, and `secrets.example.yaml` is the password sample. Copy them, change the hostname and image, replace the placeholders, and do not commit filled-in passwords.
+The chart does not store passwords and does not create Secrets from values. Published defaults are `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b8`. In this repository, `values.example.yaml` is the same knobs with comments, and `secrets.example.yaml` is the password sample. Copy them, change the hostname and image, replace the placeholders, and do not commit filled-in passwords.
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   -f my-values.yaml
 ```
@@ -95,7 +95,7 @@ kubectl -n octop create secret tls octop-tls \
   --cert=fullchain.pem --key=privkey.pem
 
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -104,7 +104,7 @@ Without a public hostname, or when the ingress controller is not Ingress NGINX, 
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set ingress.enabled=false
 
@@ -138,7 +138,7 @@ Sign in through the Ingress host with the `octop-admin` username and password. T
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --reuse-values \
   --set ingress.host=octop.example.com
@@ -150,7 +150,7 @@ Keep the TLS secret's names in step with that host. If TLS is turned off, also s
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --reuse-values \
   --set replicaCount=3
@@ -158,13 +158,46 @@ helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 A rolling update starts a new Pod before stopping an old one. The old Pod releases channel and cron leases on exit. A new Pod claims them on the next reconcile. A page stuck to the old Pod disconnects. A refresh lands on a live replica.
 
+## Use CubeSandbox workspaces
+
+Deploy CubeSandbox, prepare a template in the READY state, and make sure each Octop Pod can reach CubeAPI and the sandbox data plane. Use an Octop release that includes CubeSandbox support. The standard image for that release includes the native SDK.
+
+Set the CubeAPI URL in your Helm values override. If the Pods cannot reach the data plane through the sandbox domain, set `proxyNodeIP` to a CubeProxy IP the Pods can reach. Set `proxyPortHTTP` if the HTTP data plane uses a custom port, such as a forwarded port on an SSH tunnel.
+
+```yaml
+cubeSandbox:
+  enabled: true
+  apiUrl: http://cubeapi.cube-system.svc.cluster.local:3000
+  proxyNodeIP: ""
+  proxyPortHTTP: ""
+  existingSecret: ""
+```
+
+Set `existingSecret` to the name of a Secret created in the release namespace. It
+must contain these keys.
+
+| Key | Purpose |
+| --- | --- |
+| `lock-dsn` | Required. PostgreSQL connection string shared by all replicas. It can point to the Octop database. |
+| `api-key` | Required when CubeAPI authentication is enabled. |
+| `workspace-backup` | Optional. Object storage backend configuration as JSON, with a `type` field. Enables file recovery when a sandbox is recreated. |
+
+Save the overrides as `my-values.yaml` and install or upgrade using the published chart version that includes CubeSandbox support.
+
+```sh
+helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
+  --version "REPLACE_WITH_CHART_VERSION" -n octop -f my-values.yaml
+```
+
+In the admin console, add a CubeSandbox backend, enter the template ID, and run the connectivity test. Assign the backend to an expert, then access that expert's workspace from two different Pods to verify that both replicas reuse the same sandbox. Restart the Octop Pods after updating the Secret so they pick up the new values.
+
 ## Managed PostgreSQL
 
 Leave the extension to the database operator (`CREATE EXTENSION vector`). The chart then skips its own database:
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b7 \
+  --version 1.0.3-b8 \
   -n octop \
   --set postgresql.enabled=false \
   --set database.host=pg.example.com \
