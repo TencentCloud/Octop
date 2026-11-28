@@ -2,9 +2,30 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 
 from octop.infra.agents.settings import acp_host
+
+
+def test_windows_npx_runner_keeps_arguments_out_of_the_shell(tmp_path, monkeypatch):
+    from octop.infra.agents.settings import acp
+
+    shim = tmp_path / "npx.cmd"
+    script = tmp_path / "node_modules" / "npm" / "bin" / "npx-cli.js"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    node = tmp_path / "node.exe"
+    monkeypatch.setattr(acp.sys, "platform", "win32")
+    monkeypatch.setattr(
+        acp.shutil, "which", lambda name, path: str(shim if name == "npx" else node)
+    )
+    assert acp.host_runner_argv("npx", ["adapter with spaces", "x&y"], {}) == (
+        str(node),
+        [str(script), "adapter with spaces", "x&y"],
+    )
 
 
 @pytest.mark.asyncio
@@ -181,3 +202,12 @@ async def test_qwen_code_launches_with_acp_flag(monkeypatch: pytest.MonkeyPatch)
     result = await acp_host.acp_host_status(runner="qwen_code", locale="en")
     assert result["status"] == "ready"
     assert "npm install -g @qwen-code/qwen-code" in result["scripts"]["darwin"]
+
+
+def test_which_explicit_path_checks_safe_host_file(tmp_path: Path) -> None:
+    binary = tmp_path / "my-acp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    assert acp_host._which(str(binary), {}) == os.path.realpath(str(binary))
+    assert acp_host._which(str(tmp_path / "missing"), {}) is None
+    if os.name == "posix":
+        assert acp_host._which("/etc/passwd", {}) is None

@@ -5,6 +5,25 @@
   gap: 4px;
 }
 
+.expertPicker {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  padding: 4px;
+
+  > .option {
+    flex: 0 1 42px;
+    min-width: 0;
+
+    .swatch {
+      max-width: calc(100% - 8px);
+      aspect-ratio: 1;
+      height: auto;
+    }
+  }
+}
+
 .option {
   width: 42px;
   height: 42px;
@@ -57,11 +76,11 @@
     0 0 0 4px var(--fn-text-primary);
 }
 
-/* Custom color swatch: a rainbow conic gradient hints "pick any color".
-   When the custom palette is active the gradient is dropped so the inline
-   background-color (the chosen hex) shows through. */
+/* Custom color swatch: a rainbow wheel marks "pick any color". Once a color
+   is chosen the wheel stays as a ring, so the slot does not collapse into
+   another solid preset. The chosen hex is the inline background-color. */
 .customSwatch {
-  background-image: conic-gradient(
+  --custom-wheel: conic-gradient(
     #f59e0b,
     #ef4444,
     #ec4899,
@@ -71,17 +90,29 @@
     #10b981,
     #f59e0b
   );
+  position: relative;
+  background-image: var(--custom-wheel);
 }
 
 .active .customSwatch {
   background-image: none;
 }
 
-/* Hex readout next to the custom swatch when a non-curated color is active. */
-.customHex {
-  font-size: 11px;
-  font-family: var(--fn-font-mono, monospace);
-  color: var(--fn-text-tertiary);
-  align-self: center;
-  user-select: text;
+.active .customSwatch::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--custom-wheel);
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 4px),
+    #000 calc(100% - 3px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 4px),
+    #000 calc(100% - 3px)
+  );
+  pointer-events: none;
 }

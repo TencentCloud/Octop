@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "antd";
 import { ImagePlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ export function ResourceAvatarPicker({
   disabled = false,
   allowUpload = true,
   previewLarge = false,
+  compact = false,
   renderPreview,
   renderPreset,
   onPick,
@@ -31,6 +32,7 @@ export function ResourceAvatarPicker({
   disabled?: boolean;
   allowUpload?: boolean;
   previewLarge?: boolean;
+  compact?: boolean;
   /** Optional custom preview (e.g. expert avatar with accent colour). */
   renderPreview?: (args: {
     displayUrl: string | null;
@@ -48,6 +50,10 @@ export function ResourceAvatarPicker({
   onRemove?: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  const presetGridId = useId();
+  const presetButton = useRef<HTMLButtonElement>(null);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const presetAvailable = presets.length > 0 && onSelectPreset;
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const localPreviewRef = useRef<string | null>(null);
   const displayUrl = localPreview ?? imageUrl ?? null;
@@ -82,31 +88,51 @@ export function ResourceAvatarPicker({
             large={previewLarge}
           />
         )}
-        {allowUpload && onPick ? (
+        {(allowUpload && onPick) || (compact && presetAvailable) ? (
           <div className={styles.actions}>
-            <Button
-              size="small"
-              icon={<ImagePlus size={14} />}
-              disabled={disabled}
-              onClick={() => {
-                void pickImageFile().then(async (file) => {
-                  if (!file) return;
-                  const err = validateAvatarFile(file, t);
-                  if (err) {
-                    message.error(err);
-                    return;
-                  }
-                  replaceLocalPreview(URL.createObjectURL(file));
-                  try {
-                    await onPick(file);
-                  } catch {
-                    replaceLocalPreview(null);
-                  }
-                });
-              }}
-            >
-              {hasPhoto ? t("experts.avatarChange") : t("experts.avatarUpload")}
-            </Button>
+            {compact && presetAvailable && (
+              <Button
+                size="small"
+                aria-expanded={presetsOpen}
+                aria-controls={presetGridId}
+                ref={presetButton}
+                disabled={disabled}
+                onClick={() => setPresetsOpen((open) => !open)}
+              >
+                {t("experts.avatarChoosePreset")}
+              </Button>
+            )}
+            {allowUpload && onPick && (
+              <Button
+                size="small"
+                icon={<ImagePlus size={14} />}
+                disabled={disabled}
+                onClick={() => {
+                  void pickImageFile().then(async (file) => {
+                    if (!file) return;
+                    const err = validateAvatarFile(file, t);
+                    if (err) {
+                      message.error(err);
+                      return;
+                    }
+                    replaceLocalPreview(URL.createObjectURL(file));
+                    try {
+                      await onPick(file);
+                    } catch {
+                      replaceLocalPreview(null);
+                      if (compact) {
+                        setPresetsOpen(false);
+                        presetButton.current?.focus();
+                      }
+                    }
+                  });
+                }}
+              >
+                {hasPhoto
+                  ? t("experts.avatarChange")
+                  : t("experts.avatarUpload")}
+              </Button>
+            )}
             {hasPhoto && onRemove ? (
               <Button
                 size="small"
@@ -119,16 +145,24 @@ export function ResourceAvatarPicker({
                 {t("experts.avatarRemove")}
               </Button>
             ) : null}
-            <span className={styles.hint}>{t("experts.avatarHint")}</span>
+            {!compact && (
+              <span className={styles.hint}>{t("experts.avatarHint")}</span>
+            )}
           </div>
         ) : null}
       </div>
       {presets.length > 0 && onSelectPreset ? (
         <>
-          <div className={styles.presetLabel}>
-            {t("adminUsers.avatarSamples")}
-          </div>
-          <div className={styles.presetGrid}>
+          {!compact && (
+            <div className={styles.presetLabel}>
+              {t("adminUsers.avatarSamples")}
+            </div>
+          )}
+          <div
+            id={presetGridId}
+            className={styles.presetGrid}
+            style={compact && !presetsOpen ? { display: "none" } : undefined}
+          >
             {presets.map((preset, index) => {
               const selected =
                 !hasPhoto &&
@@ -166,6 +200,10 @@ export function ResourceAvatarPicker({
                   title={label}
                   onClick={() => {
                     replaceLocalPreview(null);
+                    if (compact) {
+                      setPresetsOpen(false);
+                      presetButton.current?.focus();
+                    }
                     void Promise.resolve(
                       onSelectPreset(index === 0 ? null : preset.id),
                     ).catch(() => undefined);

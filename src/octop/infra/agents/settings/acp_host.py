@@ -19,6 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from octop.infra.agents.settings.acp import host_runner_argv
+from octop.infra.utils.host_dirs import assert_safe_host_file
+
 logger = logging.getLogger(__name__)
 
 _INSTALL_TIMEOUT_SEC = 180
@@ -250,10 +253,13 @@ def _host_env(extra: dict[str, str] | None) -> dict[str, str]:
 
 
 def _which(name: str, env: dict[str, str]) -> str | None:
-    if not name:
+    if not name or "\0" in name:
         return None
-    if os.path.isabs(name) or "/" in name or "\\" in name:
-        return name if os.path.isfile(name) else None
+    if os.path.isabs(name) or "/" in name or "\\" in name or name.startswith("~"):
+        try:
+            return assert_safe_host_file(name, restrict_to_home=False)
+        except ValueError:
+            return None
     return shutil.which(name, path=env.get("PATH"))
 
 
@@ -436,6 +442,7 @@ async def _handshake(command: str, args: list[str], env: dict[str, str]) -> tupl
         if Path(command).name.lower().startswith("npx")
         else _PROBE_TIMEOUT_SEC
     )
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(timeout):
             async with spawn_agent_process(
@@ -472,6 +479,7 @@ async def _ask(command: str, args: list[str], env: dict[str, str]) -> tuple[bool
     from acp.schema import ClientCapabilities, Implementation, TextContentBlock
 
     client = _ProbeClient()
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(_ASK_TIMEOUT_SEC):
             async with spawn_agent_process(

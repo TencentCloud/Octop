@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from starlette.websockets import WebSocketDisconnect
 
 from tests.support.app import octop_client
@@ -496,6 +497,60 @@ async def test_thread_history_after_stream(env: Any) -> None:
     hist = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=alice_auth)
     assert hist.status_code == 200
     assert "messages" in hist.json()
+
+
+@pytest.mark.parametrize(
+    ("fragments", "expected_reasoning"),
+    [
+        (("\ud83e", "\udd16"), "🤖"),
+        (("\ud83e",), "\ufffd"),
+    ],
+    ids=["split-emoji", "unpaired-surrogate"],
+)
+async def test_thread_history_after_surrogate_reasoning(
+    env: Any, fragments: tuple[str, ...], expected_reasoning: str
+) -> None:
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    question = "History test"
+    answer = "答复"
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.chunks = [
+        *({"type": "reasoning", "node": "agent", "content": fragment} for fragment in fragments),
+        {"type": "token", "node": "agent", "content": answer},
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    HumanMessage(content=question, id="user"),
+                    AIMessage(
+                        content=answer,
+                        id="reply",
+                        additional_kwargs={"reasoning_content": "".join(fragments)},
+                    ),
+                ],
+            },
+        },
+    ]
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    create.raise_for_status()
+    thread_id = create.json()["thread_id"]
+
+    chunks = await _consume_ws_turn(c, aid, alice_auth, text=question, thread_id=thread_id)
+    assert chunks[-1]["type"] == "done"
+
+    history = await c.get(f"/api/agents/{aid}/threads/{thread_id}/history", headers=alice_auth)
+    history.raise_for_status()
+    payload = history.json()
+    assert payload["history_status"] == "ready"
+    assert len(payload["messages"]) == 2
+    user, assistant = payload["messages"]
+    assert user["role"] == "user"
+    assert user["content"] == [{"type": "text", "text": question}]
+    assert assistant["role"] == "assistant"
+    assert assistant["content"] == [
+        {"type": "thinking", "thinking": expected_reasoning},
+        {"type": "text", "text": answer},
+    ]
 
 
 async def test_thread_history_reports_active_turn(env: Any) -> None:

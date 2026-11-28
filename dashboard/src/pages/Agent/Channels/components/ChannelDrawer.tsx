@@ -10,8 +10,9 @@ import {
   Select,
   Spin,
   Switch,
+  Tooltip,
 } from "antd";
-import { Activity } from "lucide-react";
+import { Activity, CircleHelp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
@@ -19,10 +20,12 @@ import type { Rule } from "antd/es/form";
 import { QRCodeSVG } from "qrcode.react";
 import cx from "classnames";
 import {
+  isPluginChannelKind,
   CHANNEL_FIELDS,
   CHANNEL_ICONS,
   CHANNEL_KEYS,
   CHANNEL_LABELS,
+  CHANNEL_DESCRIPTIONS,
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
@@ -144,6 +147,7 @@ interface ChannelDrawerProps {
   editing: ChannelRow | null;
   loadingConfig: boolean;
   initialValues: ChannelFormValues | undefined;
+  secretsSet?: string[];
   form: FormInstance<ChannelFormValues>;
   saving: boolean;
   onDelete?: () => void;
@@ -161,32 +165,61 @@ interface ChannelDrawerProps {
   agentId: string;
 }
 
-function FormItemForField({
+export function FormItemForField({
   field,
   disabled = false,
   editing = false,
+  secretKept = false,
+  helpInTooltip = false,
 }: {
   field: ChannelField;
   editing?: boolean;
   disabled?: boolean;
+  /** Stored secret stays on the server; an empty field means keep it. */
+  secretKept?: boolean;
+  /** Slack and WhatsApp show field help on the label question mark. */
+  helpInTooltip?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const isBuiltinHelp = Boolean(field.helpKey?.startsWith("channels."));
+  const help = field.helpKey ? t(field.helpKey) : undefined;
+  const helpInQuestion = Boolean(help) && (helpInTooltip || !isBuiltinHelp);
+  const extra = help && !helpInQuestion ? help : undefined;
+  const fieldLabel = helpInQuestion ? (
+    <span>
+      {label}{" "}
+      <Tooltip title={help}>
+        <span
+          role="img"
+          aria-label={`${label}: ?`}
+          tabIndex={0}
+          className={styles.fieldHelp}
+        >
+          <CircleHelp size={14} />
+        </span>
+      </Tooltip>
+    </span>
+  ) : (
+    label
+  );
   const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
   if (field.type === "select") {
+    const optionPrefix = field.optionLabelPrefix ?? "channels.telegram_option_";
     return (
       <Form.Item
         name={field.name}
-        label={label}
+        label={fieldLabel}
         initialValue={initialValue}
-        extra={field.helpKey ? t(field.helpKey) : undefined}
+        extra={extra}
       >
         <Select
+          disabled={disabled}
           options={field.options?.map((value) => ({
             value,
-            label: t(`channels.telegram_option_${value}`),
+            label: t(`${optionPrefix}${value}`),
           }))}
         />
       </Form.Item>
@@ -196,12 +229,12 @@ function FormItemForField({
     return (
       <Form.Item
         name={field.name}
-        label={label}
+        label={fieldLabel}
         initialValue={initialValue}
         valuePropName="checked"
-        extra={field.helpKey ? t(field.helpKey) : undefined}
+        extra={extra}
       >
-        <Switch />
+        <Switch disabled={disabled} />
       </Form.Item>
     );
   }
@@ -211,14 +244,15 @@ function FormItemForField({
       : field.type === "textarea" || field.type === "json"
       ? Input.TextArea
       : Input;
-  const rules: Rule[] = field.required
-    ? [
-        {
-          required: true,
-          message: t("channels.fieldRequired", { label }),
-        },
-      ]
-    : [];
+  const rules: Rule[] =
+    field.required && !(secretKept && field.type === "password")
+      ? [
+          {
+            required: true,
+            message: t("channels.fieldRequired", { label }),
+          },
+        ]
+      : [];
   if (field.type === "json") {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
@@ -255,15 +289,14 @@ function FormItemForField({
     });
   }
   return (
-    <Form.Item
-      name={field.name}
-      label={label}
-      rules={rules}
-      extra={field.helpKey ? t(field.helpKey) : undefined}
-    >
+    <Form.Item name={field.name} label={fieldLabel} rules={rules} extra={extra}>
       <Input1
         disabled={disabled}
-        placeholder={field.placeholder}
+        placeholder={
+          secretKept && field.type === "password"
+            ? t("common.unchanged")
+            : field.placeholder
+        }
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
           : {})}
@@ -345,6 +378,14 @@ function QqGroupContextPolicyFields({
     ["group_context", "activation"],
     form,
   );
+  const watchedOwnerCommandsOnly = Form.useWatch(
+    ["group_context", "owner_commands_only"],
+    form,
+  );
+  const watchedOwnerToolsOnly = Form.useWatch(
+    ["group_context", "owner_tools_only"],
+    form,
+  );
   const policy = normalizeQqGroupContextConfig(
     form.getFieldValue("group_context"),
   );
@@ -354,6 +395,14 @@ function QqGroupContextPolicyFields({
     policy.visibility) as QqGroupVisibility;
   const activation = (watchedActivation ??
     policy.activation) as QqGroupActivation;
+  const ownerCommandsOnly =
+    typeof watchedOwnerCommandsOnly === "boolean"
+      ? watchedOwnerCommandsOnly
+      : policy.owner_commands_only;
+  const ownerToolsOnly =
+    typeof watchedOwnerToolsOnly === "boolean"
+      ? watchedOwnerToolsOnly
+      : policy.owner_tools_only;
 
   const updatePolicy = (patch: Partial<QqGroupContextConfig>) => {
     form.setFieldValue("group_context", {
@@ -373,7 +422,11 @@ function QqGroupContextPolicyFields({
 
   return (
     <div className={styles.qqGroupPolicy}>
-      <div className={styles.qqGroupPolicyHeader}>
+      <div
+        className={`${styles.qqGroupPolicyHeader} ${
+          enabled ? "" : styles.qqGroupPolicyHeaderCollapsed
+        }`}
+      >
         <div>
           <div className={styles.qqGroupPolicyTitle}>
             {t("channels.qqGroupPolicyTitle")}
@@ -387,7 +440,7 @@ function QqGroupContextPolicyFields({
           valuePropName="checked"
           noStyle
         >
-          <Switch />
+          <Switch aria-label={t("channels.qqGroupContextEnabled")} />
         </Form.Item>
       </div>
 
@@ -457,8 +510,43 @@ function QqGroupContextPolicyFields({
           </div>
 
           <Form.Item
+            name={["group_context", "owner_commands_only"]}
+            label={t("channels.qqGroupOwnerCommandsOnly")}
+            tooltip={t("channels.qqGroupOwnerCommandsOnlyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name={["group_context", "owner_tools_only"]}
+            label={t("channels.qqGroupOwnerToolsOnly")}
+            tooltip={t("channels.qqGroupOwnerToolsOnlyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name={["group_context", "owner_ids"]}
+            label={t("channels.qqGroupOwnerIds")}
+            extra={
+              <div className={styles.qqGroupPolicyDescription}>
+                {t("channels.qqGroupOwnerIdsHelp")}
+              </div>
+            }
+          >
+            <Select
+              mode="tags"
+              open={false}
+              suffixIcon={null}
+              disabled={!ownerCommandsOnly && !ownerToolsOnly}
+              tokenSeparators={[",", "，", " ", "\n"]}
+              placeholder={t("channels.qqGroupOwnerIdsPlaceholder")}
+            />
+          </Form.Item>
+          <Form.Item
             name={["group_context", "clear_after_reply"]}
             label={t("channels.qqGroupClearAfterReply")}
+            className={styles.qqGroupPolicyClearAfterReply}
             tooltip={t("channels.qqGroupClearAfterReplyDesc")}
             valuePropName="checked"
           >
@@ -556,10 +644,12 @@ export function ChannelDrawer({
   onTest,
   testing,
   agentId,
+  secretsSet = [],
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
   const allowAllDiscordChannels =
     Form.useWatch("allow_all_channels", form) !== false;
+  const slackReplyInThread = Form.useWatch("reply_in_thread", form) !== false;
   const isEdit = editing !== null;
   const [selectedKind, setSelectedKind] = useState<ChannelKey>(
     initialValues?.kind ?? "feishu",
@@ -1793,8 +1883,9 @@ export function ChannelDrawer({
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <Drawer
-      width={460}
+      width={520}
       placement="right"
+      className={styles.channelDrawer}
       title={
         <div className={styles.drawerTitle}>
           {CHANNEL_ICONS[selectedKind] && (
@@ -1916,21 +2007,28 @@ export function ChannelDrawer({
 
           {(configMode === "manual" || isEdit || !supportsQuickConfig) && (
             <>
-              {introUrl && (
+              {(introUrl || CHANNEL_DESCRIPTIONS[selectedKind]) && (
                 <div className={styles.channelIntroBanner}>
                   <div className={styles.bannerText}>
                     <div className={styles.bannerDesc}>
-                      {t(`channels.intro_${selectedKind}`, kindLabel)}
+                      {CHANNEL_DESCRIPTIONS[selectedKind] ||
+                        t(`channels.intro_${selectedKind}`, kindLabel)}
                     </div>
-                    <a
-                      href={introUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.bannerLink}
-                    >
-                      {t("channels.getCredentials")}
-                      <span className={styles.bannerLinkArrow}>&#8250;</span>
-                    </a>
+                    {introUrl && (
+                      <a
+                        href={introUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.bannerLink}
+                      >
+                        {t(
+                          isPluginChannelKind(selectedKind)
+                            ? "channels.viewPluginConfig"
+                            : "channels.getCredentials",
+                        )}
+                        <span className={styles.bannerLinkArrow}>&#8250;</span>
+                      </a>
+                    )}
                   </div>
                 </div>
               )}
@@ -1977,10 +2075,17 @@ export function ChannelDrawer({
                     key={f.name}
                     field={f}
                     editing={isEdit}
+                    helpInTooltip={
+                      selectedKind === "slack" || selectedKind === "whatsapp"
+                    }
+                    secretKept={secretsSet.includes(f.name)}
                     disabled={
-                      selectedKind === "discord" &&
-                      f.name === "allowed_channel_ids" &&
-                      allowAllDiscordChannels
+                      (selectedKind === "discord" &&
+                        f.name === "allowed_channel_ids" &&
+                        allowAllDiscordChannels) ||
+                      (selectedKind === "slack" &&
+                        f.name === "reply_broadcast" &&
+                        !slackReplyInThread)
                     }
                   />
                 ))

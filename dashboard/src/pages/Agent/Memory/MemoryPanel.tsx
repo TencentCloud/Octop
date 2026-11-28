@@ -10,6 +10,7 @@ import {
   Bell,
   Heart,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   MessageSquare,
   Network,
@@ -33,6 +34,7 @@ import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 import StrongMemory from "./StrongMemory";
+import McpAccess from "./McpAccess";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import { useAgent } from "../../../context/AgentContext";
@@ -135,6 +137,8 @@ export interface MemoryPanelProps {
   agentId: string | null;
   /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
   fill?: boolean;
+  /** Account-level terminal access, enabled on the main memory page only. */
+  mcpAccess?: { active: boolean; onChange: (active: boolean) => void };
 }
 
 /** Memory tabs. Managed experts use the same pages; memory stays off until enabled. */
@@ -148,6 +152,7 @@ export function memoryTabsForKind(
 export default function MemoryPanel({
   agentId,
   fill = true,
+  mcpAccess,
 }: MemoryPanelProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
@@ -326,23 +331,55 @@ export default function MemoryPanel({
     });
   }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t, tabs]);
 
-  if (!agentId) {
-    return (
-      <Empty
-        description={t("memory.noAgentSelected")}
-        style={{ marginTop: 64 }}
-      />
-    );
+  const noAgent = (
+    <Empty
+      description={t("memory.noAgentSelected")}
+      style={{ marginTop: 64 }}
+    />
+  );
+  if (!agentId && !mcpAccess) return noAgent;
+
+  const items = agentId
+    ? [...tabItems]
+    : [
+        {
+          key: "overview",
+          label: (
+            <TabLabel icon={LayoutDashboard}>
+              {t("memory.tabs.overview", "概览")}
+            </TabLabel>
+          ),
+          children: noAgent,
+        },
+      ];
+  if (mcpAccess) {
+    items.splice(1, 0, {
+      key: "mcp",
+      label: (
+        <TabLabel icon={KeyRound}>{t("memory.tabs.mcp", "共享记忆")}</TabLabel>
+      ),
+      children: <McpAccess />,
+    });
   }
 
+  const currentMemoryTab = conversationsOnly
+    ? "conversations"
+    : agentId
+    ? activeTab
+    : "overview";
   return (
     <Tabs
       className={styles.memoryTabs}
       style={fill ? undefined : { height: "auto" }}
-      activeKey={conversationsOnly ? "conversations" : activeTab}
-      onChange={(k) => setActiveTab(k as MemoryTab)}
+      activeKey={mcpAccess?.active ? "mcp" : currentMemoryTab}
+      onChange={(key) => {
+        if (key !== "mcp") setActiveTab(key as MemoryTab);
+        if (mcpAccess && mcpAccess.active !== (key === "mcp")) {
+          mcpAccess.onChange(key === "mcp");
+        }
+      }}
       destroyOnHidden
-      items={tabItems}
+      items={items}
     />
   );
 }

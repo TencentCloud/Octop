@@ -67,6 +67,27 @@ class ThreadMessageRepo:
             ).fetchone()
         return int(row[0])
 
+    def latest_human_activity(self, agent_id: str) -> int | None:
+        """Latest real human message timestamp (unix seconds) for *agent_id*.
+
+        Excludes synthetic cron prompts (``cron:%``) so scheduled runs and
+        proactive care messages do not distort the user-idle clock.
+        """
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(tm.created_at) "
+                "FROM thread_messages tm "
+                "JOIN threads t ON t.thread_id = tm.thread_id "
+                "WHERE t.agent_id = ? "
+                "AND tm.role IN ('human', 'user') "
+                "AND (tm.message_id IS NULL OR tm.message_id NOT LIKE 'cron:%')",
+                (agent_id,),
+            ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        ts = int(row[0])
+        return ts if ts > 0 else None
+
     def threads_with_messages(self, thread_ids: Sequence[str]) -> set[str]:
         """Which of *thread_ids* actually have projected messages.
 

@@ -94,7 +94,8 @@ image to receive these dependencies; restarting an older image is insufficient.
 
 ### Data persistence
 
-- Compose mounts host `~/.octop` → container `/data/.octop`
+- Compose bind-mounts the invoking user's `~/.octop` → container `/data/.octop`. Existing installs keep that directory with no config change and no data migration
+- The compose file uses `${HOME}/.octop` (`/root/.octop` when `HOME` is unset). A literal `~` is not expanded by Compose when `HOME` is missing, and would mount an empty `~` directory next to the compose file
 - `docker run` example uses named volume `octop-data`
 - First boot: a valid `OCTOP_DEFAULT_PASSWORD` runs `octop init` and writes `credential.txt`; unset or rejected passwords skip admin creation and write the wizard unlock password to `/data/.octop/octop-login.txt`. The container does not exit because of a weak default.
 

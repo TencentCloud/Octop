@@ -24,7 +24,7 @@ import yaml
 MAX_FILES = 2_000
 MAX_BYTES = 64 * 1024 * 1024
 MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024
-RESERVED_SKILL_SLUGS = frozenset({"skill-manager"})
+RESERVED_SKILL_SLUGS = frozenset({"office-documents", "skill-manager"})
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _NAMESPACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 

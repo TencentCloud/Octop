@@ -1,9 +1,9 @@
 """Point one team-member turn at the host workspace.
 
-File tools keep their names. While the turn is active, read, write, and
-execute call the host backend. Skills, memory, and connectors stay on the
-member. The member's own file tools are left in place only when the user
-explicitly asks for them.
+File tools keep their names. While the turn is active, reads and writes use
+the host or bridge directory. Directories the member passes to deepagents
+stay on the member backend and are read-only. The member's own file tools
+are left in place only when the user explicitly asks for them.
 """
 
 from __future__ import annotations
@@ -11,7 +11,10 @@ from __future__ import annotations
 import inspect
 import logging
 import threading
-from contextvars import ContextVar
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import Any
 
 from octop.i18n import tr
@@ -21,6 +24,10 @@ logger = logging.getLogger(__name__)
 HOST_KEY = "octop_team_file_host"
 DIR_KEY = "octop_team_file_dir"
 EXECUTE_KEY = "octop_team_file_execute"
+# Directories the member already passes to deepagents (skills, subagents, and
+# any later roots resolved the same way). Read-only for this turn.
+MOUNTS_KEY = "octop_team_member_mounts"
+MEMBER_KEY = "octop_team_file_member"
 # What this turn may do on the bound workspace. ``file`` is always on when a
 # file target is stamped. ``execute`` follows the workspace shell. Later device
 # tools (contacts, location) are extra bool keys on the same dict.
@@ -115,6 +122,55 @@ def stamp_turn_capabilities(
     return caps
 
 
+@dataclass(frozen=True)
+class TurnFileTarget:
+    """The workspace bound to the current task, even if tool config drops it."""
+
+    directory: str
+    execute: bool
+    bridge_token: str = ""
+    host_id: str = ""
+
+
+_TURN: ContextVar[TurnFileTarget | None] = ContextVar("octop_turn_file_target", default=None)
+
+
+def current_turn_file_target() -> TurnFileTarget | None:
+    return _TURN.get()
+
+
+def _turn_from_config(cfg: dict[str, Any] | None) -> TurnFileTarget | None:
+    if not isinstance(cfg, dict):
+        return None
+    directory = str(cfg.get(DIR_KEY) or "").strip()
+    bridge = str(cfg.get(BRIDGE_TARGET_KEY) or "").strip()
+    host = str(cfg.get(HOST_KEY) or "").strip()
+    if not directory or not (bridge or host):
+        return None
+    return TurnFileTarget(
+        directory=directory,
+        execute=capability_enabled(cfg, "execute"),
+        bridge_token=bridge,
+        host_id=host,
+    )
+
+
+@contextmanager
+def bind_turn_file_target(request: dict[str, Any]) -> Iterator[TurnFileTarget | None]:
+    """Remember this request's workspace for the whole turn.
+
+    Tool callbacks and a managed runner's permission loop do not always see the
+    LangGraph config that carried the directory. The turn task does.
+    """
+    raw = request.get("configurable")
+    stamp = _turn_from_config(raw if isinstance(raw, dict) else None)
+    token: Token[TurnFileTarget | None] = _TURN.set(stamp)
+    try:
+        yield stamp
+    finally:
+        _TURN.reset(token)
+
+
 def capability_enabled(cfg: dict[str, Any] | None, name: str) -> bool:
     """Whether *name* is on for this turn.
 
@@ -182,6 +238,7 @@ def file_target_briefing(
     managed: bool,
     local: bool = False,
     deliver: bool = False,
+    mounts: list[str] | None = None,
 ) -> str:
     if local:
         key = "bridge.local_file_target_managed" if managed else "bridge.local_file_target"
@@ -190,10 +247,119 @@ def file_target_briefing(
     body = tr(key, locale, directory=directory)
     if managed and deliver:
         body = f"{body}\n{tr('teams.member_file_target_send', locale)}"
+    listed = [item for item in (mounts or []) if item]
+    if listed:
+        body = f"{body}\n{tr('teams.member_file_mounts', locale, paths=chr(10).join(listed))}"
     extra_key = (
         "teams.member_file_target_execute" if execute else "teams.member_file_target_no_execute"
     )
     return f"{body}\n{tr(extra_key, locale)}"
+
+
+def deepagents_directories(agent: Any) -> list[str]:
+    """Directories this agent passes to deepagents, as that runtime sees them.
+
+    Skills come from ``BackendWorkspace.skill_paths``. Subagent roots use the
+    same source-path conversion. An empty list means the turn keeps the root
+    workspace only.
+    """
+    workspace = getattr(agent, "workspace", None)
+    skill_paths = getattr(workspace, "skill_paths", None)
+    if workspace is None or not callable(skill_paths):
+        return []
+    config = getattr(agent, "config", None)
+    try:
+        found = [str(path) for path in skill_paths(extra=getattr(config, "skills_dir", None))]
+    except Exception:
+        logger.debug("team file mounts skipped; skill paths failed", exc_info=True)
+        return []
+    source = getattr(workspace, "_deepagents_source_path", None)
+    if callable(source):
+        try:
+            from octop_harness.subagents.loader import agent_scan_roots
+
+            for root in agent_scan_roots(workspace, extra=getattr(config, "subagents_path", None)):
+                found.append(str(source(root)))
+        except Exception:
+            logger.debug("team file mounts skipped subagent roots", exc_info=True)
+    return _unique_mounts(found)
+
+
+def stamp_member_mounts(cfg: dict[str, Any], agent: Any, member_agent_id: str) -> list[str]:
+    """Record the member's deepagents directories. Empty when they cannot be read."""
+    try:
+        mounts = deepagents_directories(agent)
+    except Exception:
+        logger.debug("team file mounts skipped for %s", member_agent_id, exc_info=True)
+        return []
+    if not mounts:
+        return []
+    cfg[MOUNTS_KEY] = mounts
+    if member_agent_id.strip():
+        cfg[MEMBER_KEY] = member_agent_id.strip()
+    return mounts
+
+
+_MUTATING_FILE_TOOLS = frozenset({"write_file", "edit_file", "delete"})
+_MOUNT_ARG_KEYS = {
+    "glob": ("path", "pattern"),
+    "grep": ("path",),
+    "ls": ("path",),
+    "execute": (),
+}
+
+
+def mount_for_path(path: str, mounts: list[str] | tuple[str, ...]) -> str | None:
+    """Longest mounted directory that contains *path*, or ``None``."""
+    text = _posix(path)
+    if text.startswith("./"):
+        text = text[2:]
+    if not text or text in {".", "/"}:
+        return None
+    best: str | None = None
+    for mount in mounts:
+        base = _posix(str(mount)).rstrip("/")
+        if path_under_root(text, base) is None:
+            continue
+        if best is None or len(base) > len(best):
+            best = base
+    return best
+
+
+def mount_for_args(
+    name: str,
+    args: dict[str, Any],
+    mounts: list[str] | tuple[str, ...],
+) -> str | None:
+    """Mounted directory touched by this tool call, before host-path rewriting."""
+    if not mounts or name == "execute":
+        return None
+    best: str | None = None
+    for key in _MOUNT_ARG_KEYS.get(name, ("file_path", "path")):
+        value = args.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        hit = mount_for_path(value, mounts)
+        if hit is not None and (best is None or len(hit) > len(best)):
+            best = hit
+    return best
+
+
+def mounted_mutation(name: str, args: dict[str, Any], mounts: list[str] | tuple[str, ...]) -> bool:
+    """True when a write would land in a read-only deepagents directory."""
+    return name in _MUTATING_FILE_TOOLS and mount_for_args(name, args, mounts) is not None
+
+
+def _unique_mounts(paths: list[str]) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for raw in paths:
+        text = _posix(raw).rstrip("/")
+        if not text or text in {".", "/"} or text in seen:
+            continue
+        seen.add(text)
+        found.append(text)
+    return found
 
 
 def _posix(path: str) -> str:

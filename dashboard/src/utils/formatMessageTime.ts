@@ -133,3 +133,27 @@ export function formatServerIsoDateTime(
     ...timeZoneOptions(timeZone),
   });
 }
+
+/** YYYY-MM-DD HH:mm:ss in the given timezone. */
+export function formatServerDateTimeSeconds(
+  input: Date | string | number,
+  timeZone?: string,
+): string {
+  const d = asDate(input);
+  if (!d) return "—";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  return `${value("year")}-${value("month")}-${value("day")} ${value(
+    "hour",
+  )}:${value("minute")}:${value("second")}`;
+}

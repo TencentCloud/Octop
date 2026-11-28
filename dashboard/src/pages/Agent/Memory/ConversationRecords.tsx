@@ -576,7 +576,7 @@ export default function ConversationRecords({
             ? selectedThread.title?.trim() || t("memory.untitledThread")
             : t("memory.conversationDetail")
         }
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         placement="right"
         onClose={closeDrawer}
         destroyOnHidden

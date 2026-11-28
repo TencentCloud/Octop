@@ -30,6 +30,16 @@ def test_user_dir_uses_username(tmp_path: Path):
     assert p.user_dir("alice") == tmp_path / ".octop" / "users" / "alice"
 
 
+def test_user_dir_rejects_path_segments(tmp_path: Path):
+    p = PathLayout(tmp_path / ".octop")
+    for bad in ("../etc", "..", "a/b", "a\\b", "foo/../../tmp"):
+        try:
+            p.user_dir(bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+
+
 def test_agent_workspace(tmp_path: Path):
     p = PathLayout(tmp_path / ".octop")
     ws = p.agent_workspace("agent01")

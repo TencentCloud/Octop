@@ -24,6 +24,7 @@ def test_public_messages_keep_tools_and_thinking() -> None:
                 "display_name": "Ada",
                 "username": "ada",
                 "user_id": 7,
+                "avatar_icon": "staff",
                 "avatar_url": "/api/users/7/avatar",
             },
             "timestamp": 10,
@@ -47,7 +48,14 @@ def test_public_messages_keep_tools_and_thinking() -> None:
 
     out = share_mod.public_conversation_messages(
         messages,
-        speaker_names={"agt": "Helper"},
+        speaker_faces={
+            "agt": {
+                "name": "Helper",
+                "icon_url": "/experts/avatars/general-assistant.svg",
+                "icon_name": "zap",
+                "color": "#6366F1",
+            }
+        },
         default_agent_id="agt",
     )
 
@@ -59,9 +67,13 @@ def test_public_messages_keep_tools_and_thinking() -> None:
         ],
         "timestamp": 10,
         "author_name": "Ada",
+        "author_avatar_icon": "staff",
     }
     assert out[1]["role"] == "assistant"
     assert out[1]["speaker_name"] == "Helper"
+    assert out[1]["speaker_icon_url"] == "/experts/avatars/general-assistant.svg"
+    assert out[1]["speaker_icon_name"] == "zap"
+    assert out[1]["speaker_color"] == "#6366F1"
     assert [block["type"] for block in out[1]["content"]] == [
         "thinking",
         "text",
@@ -96,14 +108,24 @@ async def test_public_share_hides_internal_ids(monkeypatch: pytest.MonkeyPatch) 
     server = MagicMock()
     server.services.thread_share_repo.get_active_by_token.return_value = share
     server.services.thread_repo.get.return_value = thread
-    server.services.agent_repo.get.return_value = SimpleNamespace(name="Helper")
+    server.services.agent_repo.get.return_value = SimpleNamespace(
+        name="Helper",
+        icon_url="/experts/avatars/general-assistant.svg",
+        icon_name="zap",
+        color="#6366F1",
+    )
     server.services.thread_message_repo.projection_status.return_value = "ready"
     server.config.default_timezone = "Asia/Shanghai"
     raw = [
         {
             "role": "user",
             "content": [{"type": "text", "text": "hello"}],
-            "author": {"display_name": "Ada", "username": "ada", "user_id": 7},
+            "author": {
+                "display_name": "Ada",
+                "username": "ada",
+                "user_id": 7,
+                "avatar_icon": "staff",
+            },
         }
     ]
     monkeypatch.setattr(
@@ -124,6 +146,7 @@ async def test_public_share_hides_internal_ids(monkeypatch: pytest.MonkeyPatch) 
             "role": "user",
             "content": [{"type": "text", "text": "hello"}],
             "author_name": "Ada",
+            "author_avatar_icon": "staff",
         },
     ]
     assert "thread_id" not in out

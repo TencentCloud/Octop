@@ -9,7 +9,7 @@ from langchain_core.tools import StructuredTool
 from langgraph.config import get_config
 from pydantic import Field
 
-from octop.infra.knowledge.retrieve import DEFAULT_RETRIEVAL_K, retrieve_context
+from octop.infra.knowledge.retrieve import retrieve_context
 
 SEARCH_KNOWLEDGE_TOOL = "search_knowledge"
 
@@ -110,13 +110,13 @@ def build_knowledge_tools(services: Any) -> list[StructuredTool]:
             ),
         ],
         k: Annotated[
-            int,
+            int | None,
             Field(
-                description="Max passages to return (default 8).",
+                description="Max passages to return. Defaults to the knowledge retrieval setting.",
                 ge=1,
                 le=20,
             ),
-        ] = DEFAULT_RETRIEVAL_K,
+        ] = None,
     ) -> str:
         try:
             user_id, is_admin, kb_ids, locale = _tool_ctx()

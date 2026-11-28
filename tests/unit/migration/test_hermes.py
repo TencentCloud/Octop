@@ -233,6 +233,7 @@ def test_channels_come_from_env_and_cron_is_reported(tmp_path: Path) -> None:
         env=(
             "TELEGRAM_BOT_TOKEN=tg\nFEISHU_APP_ID=cli_x\nFEISHU_APP_SECRET=fs\n"
             "DINGTALK_CLIENT_ID=only-half\nSLACK_BOT_TOKEN=xoxb\n"
+            "WHATSAPP_BRIDGE_URL=http://127.0.0.1:3000\nSIGNAL_HTTP_URL=http://127.0.0.1:8080\n"
         ),
     )
     (home / "cron").mkdir()
@@ -242,11 +243,13 @@ def test_channels_come_from_env_and_cron_is_reported(tmp_path: Path) -> None:
 
     assert [(c.kind, c.name, c.config) for c in plan.channels] == [
         ("telegram", "telegram", {"bot_token": "tg"}),
+        ("slack", "slack", {"bot_token": "xoxb"}),
         ("feishu", "feishu", {"app_id": "cli_x", "app_secret": "fs"}),
+        ("whatsapp", "whatsapp", {"provider": "waha", "bridge_url": "http://127.0.0.1:3000"}),
     ]
     assert _notes(plan) == [
         ("config_missing", {"path": str(home / "config.yaml")}),
-        ("channel_unsupported", {"name": "slack"}),
+        ("channel_unsupported", {"name": "signal"}),
         ("cron_not_migrated", {"count": 1}),
     ]
 

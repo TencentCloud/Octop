@@ -38,7 +38,11 @@ from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.gateway.media.tool_media import (
+    OUTBOUND_ATTACHMENTS_KEY,
+    history_attachments_from_chunk,
+    history_attachments_from_messages,
     media_events_from_tool_result,
+    merge_history_attachments,
     note_live_tool_call,
     select_turn_tool_results,
     tool_name_base,
@@ -76,6 +80,19 @@ if TYPE_CHECKING:
     from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _mounts_for_member(agent_manager: Any, cfg: dict[str, Any], speaker_id: str) -> list[str]:
+    """Stamp the speaker's deepagents directories, or none when unavailable."""
+    from octop.infra.agents.teams.file_target import stamp_member_mounts
+
+    try:
+        agent = agent_manager.get_agent(speaker_id)
+    except Exception:
+        logger.debug("team file mounts skipped; member %s is not running", speaker_id)
+        return []
+    return stamp_member_mounts(cfg, agent, speaker_id)
+
 
 _ROOM_HISTORY_LIMIT = 40
 _HOST_IDLE_POLL_SEC = 0.05
@@ -404,6 +421,7 @@ class TeamManager:
         emitted_tool_error_ids: set[str] = set()
         live_tool_call_ids: set[str] = set()
         emitted_media_ids: set[str] = set()
+        deliveries: list[dict[str, Any]] = []
         hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
         host_id = self._room_agent_id(room_thread_id) if hold_room else ""
         room_open = True
@@ -495,6 +513,10 @@ class TeamManager:
                             seen=emitted_tool_error_ids,
                             live=saw_tool_call,
                         )
+                        preview_ids: set[str] = set()
+                        selected = select_turn_tool_results(chunk, live_tool_call_ids, preview_ids)
+                        if selected is not None:
+                            deliveries.extend(history_attachments_from_chunk(selected))
                         await self._push_turn_tool_media(
                             chunk,
                             speaker_id=speaker_id,
@@ -594,6 +616,7 @@ class TeamManager:
             "team_live_streamed": relayed_visible,
             "stream_text": stream_text,
             "decision": decision_payload,
+            "deliveries": merge_history_attachments(deliveries),
         }
 
     def _defer_member_wall(self, speaker_id: str, member_tid: str, room_thread_id: str) -> bool:
@@ -695,7 +718,12 @@ class TeamManager:
                 text = _assistant_text(msg)
                 if text:
                     break
-        if text:
+        streamed = result.get("deliveries")
+        deliveries = merge_history_attachments(
+            streamed if isinstance(streamed, list) else [],
+            history_attachments_from_messages(list(result.get("messages") or [])),
+        )
+        if text or deliveries:
             decision = _decision_from_messages(result.get("messages") or [])
             if decision is None and isinstance(result.get("decision"), dict):
                 decision = dict(result["decision"])
@@ -705,6 +733,7 @@ class TeamManager:
                 text,
                 wrapup=True,
                 decision=decision,
+                deliveries=deliveries,
             )
         live = bool(result.get("team_live_streamed"))
         # Some models finish wrap-up in checkpoint/values only — no token
@@ -720,7 +749,7 @@ class TeamManager:
         # ``on_reply`` fires after this method even when nobody watches the
         # room. Mark the reply handled once it has been persisted, otherwise
         # the fallback path appends the same wrap-up a second time.
-        if room_thread_id and text:
+        if room_thread_id and (text or deliveries):
             self._live_host_replies.add(room_thread_id)
         return result
 
@@ -878,11 +907,17 @@ class TeamManager:
             cfg[BRIDGE_TARGET_KEY] = str(getattr(bridged, "token", "") or "")
             cfg[DIR_KEY] = directory
             stamp_turn_capabilities(cfg, execute=execute)
+            mounts = _mounts_for_member(self._agent_manager, cfg, speaker_id)
             if is_managed_agent(self._agent_manager.get_row(speaker_id)):
                 return
             locale = self._locale_for(self._payload_user_id(payload, room))
             note = file_target_briefing(
-                locale, directory, execute=execute, managed=False, local=True
+                locale,
+                directory,
+                execute=execute,
+                managed=False,
+                local=True,
+                mounts=mounts,
             )
             existing = cfg.get(BRIEFING_KEY)
             if isinstance(existing, str) and existing.strip():
@@ -902,10 +937,13 @@ class TeamManager:
         cfg[HOST_KEY] = host_id
         cfg[DIR_KEY] = directory
         stamp_turn_capabilities(cfg, execute=execute)
+        mounts = _mounts_for_member(self._agent_manager, cfg, speaker_id)
         if is_managed_agent(self._agent_manager.get_row(speaker_id)):
             return
         locale = self._locale_for(self._payload_user_id(payload, room))
-        note = file_target_briefing(locale, directory, execute=execute, managed=False)
+        note = file_target_briefing(
+            locale, directory, execute=execute, managed=False, mounts=mounts
+        )
         existing = cfg.get(BRIEFING_KEY)
         if isinstance(existing, str) and existing.strip():
             cfg[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
@@ -1793,9 +1831,11 @@ class TeamManager:
         wrapup: bool = False,
         error: bool = False,
         decision: dict[str, Any] | None = None,
+        deliveries: list[dict[str, Any]] | None = None,
     ) -> None:
         body = (text or "").strip()
-        if not thread_id or not body or self._thread_message_repo is None:
+        files = merge_history_attachments(deliveries or [])
+        if not thread_id or self._thread_message_repo is None or (not body and not files):
             return
         self._ensure_projection(thread_id)
         extra: dict[str, Any] = {"speaker_agent_id": speaker_id}
@@ -1805,6 +1845,8 @@ class TeamManager:
             extra["octop_stream_error"] = {"code": "stream_error", "source": "team_task"}
         if decision:
             extra["octop_decision"] = dict(decision)
+        if files:
+            extra[OUTBOUND_ATTACHMENTS_KEY] = files
         msg = AIMessage(
             content=body,
             id=f"team-room:{new_ulid()}:assistant",

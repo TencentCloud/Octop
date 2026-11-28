@@ -236,6 +236,8 @@ def stamp_bridge_file_target(
     *,
     locale: str,
     thread_id: str,
+    agent: Any | None = None,
+    member_agent_id: str = "",
 ) -> None:
     """Bind this expert turn to the initiator directory carried on the inbound."""
     raw = (meta or {}).get("bridge_file_target")
@@ -250,6 +252,7 @@ def stamp_bridge_file_target(
         BRIDGE_TARGET_KEY,
         DIR_KEY,
         file_target_briefing,
+        stamp_member_mounts,
         stamp_turn_capabilities,
     )
 
@@ -267,7 +270,15 @@ def stamp_bridge_file_target(
         execute=execute,
         extra=extra if isinstance(extra, dict) else None,
     )
-    note = file_target_briefing(locale, directory, execute=execute, managed=False, local=True)
+    mounts = stamp_member_mounts(cfg, agent, member_agent_id) if agent is not None else []
+    note = file_target_briefing(
+        locale,
+        directory,
+        execute=execute,
+        managed=False,
+        local=True,
+        mounts=mounts,
+    )
     existing = cfg.get(CONFIG_KEY)
     if isinstance(existing, str) and existing.strip():
         cfg[CONFIG_KEY] = f"{existing.rstrip()}\n\n{note}"

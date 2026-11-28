@@ -9,7 +9,7 @@ import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import { isEmbeddingModel, isRerankModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
@@ -150,12 +150,7 @@ export function CustomProviderModal({
         return;
       }
       const remote: ProviderModel[] = (result.models ?? [])
-        .filter((m) => {
-          if (!embeddingLane) return true;
-          const id = m.id.toLowerCase();
-          if (id.includes("rerank")) return false;
-          return /embed|bge-|e5-|gte-/.test(id);
-        })
+        .filter((m) => !embeddingLane || isEmbeddingModel(m))
         .map((m) => ({
           id: m.id,
           name: m.name || m.id,
@@ -210,7 +205,9 @@ export function CustomProviderModal({
         if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
         if (m.context_window != null) entry.context_window = m.context_window;
         if (m.reasoning) entry.reasoning = true;
-        if (embeddingLane || isEmbeddingModel(m)) {
+        if (isRerankModel(m)) {
+          entry.task = "rerank";
+        } else if (isEmbeddingModel(m, embeddingLane)) {
           entry.embedding = true;
           entry.task = "embedding";
         }

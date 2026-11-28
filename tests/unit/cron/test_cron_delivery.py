@@ -886,7 +886,7 @@ async def test_fresh_thread_does_not_return_to_latest_conversation(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_fresh_thread_resets_before_require_session() -> None:
+async def test_fresh_thread_checks_session_before_reset() -> None:
     session = _session(channel_type="feishu")
     order: list[str] = []
 
@@ -910,11 +910,12 @@ async def test_fresh_thread_resets_before_require_session() -> None:
         repos=MagicMock(),
     )
     await service.deliver(_command(fresh_thread=True, task_type="text"))
-    assert order == ["reset", "require"]
+    assert order == ["require", "reset", "require"]
 
 
 @pytest.mark.asyncio
-async def test_wrong_user_rejects_session() -> None:
+@pytest.mark.parametrize("fresh_thread", [False, True])
+async def test_wrong_user_rejects_session(fresh_thread: bool) -> None:
     session = _session(channel_type="dashboard")
     session.user_id = 9
     gateway = MagicMock()
@@ -928,8 +929,24 @@ async def test_wrong_user_rejects_session() -> None:
         repos=MagicMock(),
     )
     with pytest.raises(ValueError, match="does not belong to user"):
-        await service.deliver(_command())
+        await service.deliver(_command(fresh_thread=fresh_thread))
+    gateway.thread_registry.reset_by_session_key.assert_not_called()
     gateway.push_session_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_im_session_requires_a_new_delivery_target() -> None:
+    gateway = MagicMock()
+    gateway.thread_registry.get_session.return_value = None
+    repos = MagicMock()
+    repos.user_repo.get.return_value = SimpleNamespace(locale="en")
+    service = CronDeliveryService(gateway=gateway, agent_manager=MagicMock(), repos=repos)
+
+    with pytest.raises(ValueError, match="Choose a delivery target"):
+        await service.deliver(_command(session_key="a1:telegram:-100123:group"))
+
+    gateway.thread_registry.get_or_create_by_key.assert_not_called()
+    gateway.run_in_session.assert_not_called()
 
 
 @pytest.mark.asyncio

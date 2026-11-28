@@ -60,6 +60,7 @@ class PluginChannelInfo:
     intro_url: str
     fields: list[dict[str, Any]]
     plugin_id: str
+    description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +70,7 @@ class PluginChannelInfo:
             "intro_url": self.intro_url,
             "fields": self.fields,
             "plugin_id": self.plugin_id,
+            "description": self.description,
         }
 
 
@@ -160,6 +162,7 @@ def apply_plugin_channels(
             intro_url=reg.intro_url,
             fields=list(reg.fields or []),
             plugin_id=reg.plugin_id,
+            description=_manifest_description(registry, reg.plugin_id),
         )
     _ERRORS.clear()
     for owner, message in _KIND_ERRORS.values():
@@ -199,10 +202,12 @@ def plugin_channel_kinds(
     all_channels = getattr(registry, "all_channels", None)
     if not callable(all_channels):
         return []
-    return [info for info in _summarize(all_channels()) if _APPLIED.get(info.kind) == info]
+    return [
+        info for info in _summarize(all_channels(), registry) if _APPLIED.get(info.kind) == info
+    ]
 
 
-def _summarize(regs: list[Any]) -> list[PluginChannelInfo]:
+def _summarize(regs: list[Any], registry: Any = None) -> list[PluginChannelInfo]:
     out: list[PluginChannelInfo] = []
     seen: set[str] = set()
     for reg in regs:
@@ -217,7 +222,14 @@ def _summarize(regs: list[Any]) -> list[PluginChannelInfo]:
                 intro_url=reg.intro_url,
                 fields=list(reg.fields or []),
                 plugin_id=reg.plugin_id,
+                description=_manifest_description(registry, reg.plugin_id),
             ),
         )
     out.sort(key=lambda info: info.kind)
     return out
+
+
+def _manifest_description(registry: Any, plugin_id: str) -> str:
+    get = getattr(registry, "get", None)
+    loaded = get(plugin_id) if callable(get) else None
+    return str(getattr(getattr(loaded, "manifest", None), "description", "") or "")

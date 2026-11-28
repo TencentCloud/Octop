@@ -64,6 +64,7 @@ def test_rerankers_are_rerank_not_embedding(model_id: str) -> None:
     assert is_rerank_model({"id": model_id}) is True
     # A reranker must not become a knowledge-base embedding backend...
     assert is_embedding_model({"id": model_id}) is False
+    assert is_embedding_model({"id": model_id, "embedding": True, "task": "embedding"}) is False
     # ...nor re-enter the chat pickers.
     assert is_chat_eligible_model({"id": model_id, "enabled": True}) is False
 
