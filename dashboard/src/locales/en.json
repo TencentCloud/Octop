@@ -4657,6 +4657,15 @@
     "noAgentSelected": "Pick an agent in the top switcher first"
   },
   "proactiveConfig": {
+    "modelsUnavailable": "Model choices could not be loaded. Reset to try again.",
+    "generationModel": "Care generation model",
+    "followAgent": "Use the agent’s default model",
+    "reasoningEffort": "Reasoning effort",
+    "modelDefault": "Model default",
+    "disableThinking": "Disable reasoning",
+    "generationTimeout": "Generation timeout per attempt (seconds)",
+    "timeoutHint": "After a timeout, Octop tries once more with the same events if it is still a good time to send.",
+    "timeoutRange": "Enter a whole number from 1 to 3600.",
     "title": "Proactive Reminders",
     "description": "Octop reaches out only after the chat has gone quiet and the clock is inside care hours. It won't interrupt an active conversation.",
     "enabled": "Enable Proactive Reminders",

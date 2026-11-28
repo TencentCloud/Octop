@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -26,6 +26,7 @@ from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig, Proa
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.proactive.scheduler import (
     ProactiveCareScheduler,
+    TimingDecision,
     backoff_interval_hours,
     compute_next_trigger,
     decide_send_timing,
@@ -646,6 +647,31 @@ def _make_session_row(
         channel_chat_type=chat_type,
         channel_id=channel_id,
     )
+
+
+@pytest.mark.asyncio
+async def test_scheduled_generation_uses_persisted_config(agent_id, config_repo, monkeypatch):
+    cfg = ProactiveCareConfig(
+        agent_id=agent_id,
+        model_ref="test/fast",
+        reasoning_effort="low",
+        generation_timeout_seconds=90,
+    )
+    config_repo.upsert(cfg)
+    target = _make_session_row(session_key="dm", channel_type="weixin", channel_id="ch-1")
+    sessions = MagicMock()
+    sessions.list_by_agent.return_value = [target]
+    care = AsyncMock()
+    care.run.side_effect = asyncio.CancelledError
+    scheduler = ProactiveCareScheduler(
+        care_service=care, config_repo=config_repo, session_repo=sessions
+    )
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+    monkeypatch.setattr(scheduler, "_timing_decision", lambda *args: TimingDecision(send=True))
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler._run_loop(agent_id)
+    assert care.run.await_args.args == (agent_id, target.session_key)
+    assert care.run.await_args.kwargs["config"] == cfg
 
 
 def test_select_care_target_skips_mcp_group_peer_and_cli() -> None:

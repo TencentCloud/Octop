@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
+from octop.infra.db.repos._base import DbRow
 
 
 @dataclass
@@ -23,8 +24,23 @@ class ProactiveCareConfig:
     min_interval_hours: int = 5
     max_interval_hours: int = 24
 
+    model_ref: str | None = None
+    reasoning_effort: str = "auto"
+    generation_timeout_seconds: int = 30
 
-_DEFAULT_CONFIG = ProactiveCareConfig(agent_id="")
+    @classmethod
+    def from_row(cls, agent_id: str, row: DbRow) -> ProactiveCareConfig:
+        return cls(
+            agent_id=agent_id,
+            enabled=bool(row["enabled"]),
+            active_hours_start=row["active_hours_start"],
+            active_hours_end=row["active_hours_end"],
+            min_interval_hours=row["min_interval_hours"],
+            max_interval_hours=row["max_interval_hours"],
+            model_ref=row["model_ref"],
+            reasoning_effort=row["reasoning_effort"],
+            generation_timeout_seconds=row["generation_timeout_seconds"],
+        )
 
 
 class ProactiveCareConfigRepo:
@@ -44,42 +60,36 @@ class ProactiveCareConfigRepo:
         """
         with self._db.connect() as conn:
             row = conn.execute(
-                "SELECT enabled, active_hours_start, active_hours_end, "
-                "min_interval_hours, max_interval_hours "
-                "FROM proactive_care_config WHERE agent_id = ?",
+                "SELECT * FROM proactive_care_config WHERE agent_id = ?",
                 (agent_id,),
             ).fetchone()
         if row is None:
             return ProactiveCareConfig(agent_id=agent_id)
-        return ProactiveCareConfig(
-            agent_id=agent_id,
-            enabled=bool(row[0]),
-            active_hours_start=row[1],
-            active_hours_end=row[2],
-            min_interval_hours=row[3],
-            max_interval_hours=row[4],
-        )
+        return ProactiveCareConfig.from_row(agent_id, row)
 
-    def upsert(self, config: ProactiveCareConfig) -> None:
-        """Save or update the agent's proactive care configuration.
-
-        Args:
-            config: The configuration to save.
-        """
-        now = int(time.time())
+    def upsert(
+        self, config: ProactiveCareConfig, *, generation_fields: set[str] | None = None
+    ) -> None:
+        """Keep generation settings omitted by older clients on an existing row."""
+        columns = [
+            "enabled",
+            "active_hours_start",
+            "active_hours_end",
+            "min_interval_hours",
+            "max_interval_hours",
+            "updated_at",
+        ]
+        for field in ("model_ref", "reasoning_effort", "generation_timeout_seconds"):
+            if generation_fields is None or field in generation_fields:
+                columns.append(field)
+        updates = ", ".join(f"{column} = excluded.{column}" for column in columns)
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO proactive_care_config "
                 "(agent_id, enabled, active_hours_start, active_hours_end, "
-                "min_interval_hours, max_interval_hours, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(agent_id) DO UPDATE SET "
-                "enabled = excluded.enabled, "
-                "active_hours_start = excluded.active_hours_start, "
-                "active_hours_end = excluded.active_hours_end, "
-                "min_interval_hours = excluded.min_interval_hours, "
-                "max_interval_hours = excluded.max_interval_hours, "
-                "updated_at = excluded.updated_at",
+                "min_interval_hours, max_interval_hours, updated_at, model_ref, "
+                "reasoning_effort, generation_timeout_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                f"ON CONFLICT(agent_id) DO UPDATE SET {updates}",
                 (
                     config.agent_id,
                     int(config.enabled),
@@ -87,7 +97,10 @@ class ProactiveCareConfigRepo:
                     config.active_hours_end,
                     config.min_interval_hours,
                     config.max_interval_hours,
-                    now,
+                    int(time.time()),
+                    config.model_ref,
+                    config.reasoning_effort,
+                    config.generation_timeout_seconds,
                 ),
             )
 
@@ -103,25 +116,14 @@ class ProactiveCareConfigRepo:
         """
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT a.agent_id, c.enabled, c.active_hours_start, "
-                "c.active_hours_end, c.min_interval_hours, c.max_interval_hours "
+                "SELECT a.agent_id AS scheduled_agent_id, c.* "
                 "FROM agents a "
                 "LEFT JOIN proactive_care_config c ON c.agent_id = a.agent_id "
                 "WHERE a.enabled = 1 AND (c.agent_id IS NULL OR c.enabled = 1)",
             ).fetchall()
-        configs: list[ProactiveCareConfig] = []
-        for row in rows:
-            if row[1] is None:
-                configs.append(ProactiveCareConfig(agent_id=row[0]))
-            else:
-                configs.append(
-                    ProactiveCareConfig(
-                        agent_id=row[0],
-                        enabled=bool(row[1]),
-                        active_hours_start=row[2],
-                        active_hours_end=row[3],
-                        min_interval_hours=row[4],
-                        max_interval_hours=row[5],
-                    )
-                )
-        return configs
+        return [
+            ProactiveCareConfig.from_row(row["scheduled_agent_id"], row)
+            if row["enabled"] is not None
+            else ProactiveCareConfig(agent_id=row["scheduled_agent_id"])
+            for row in rows
+        ]

@@ -598,6 +598,7 @@ class ProactiveCareScheduler:
                 await self._care_service.run(
                     agent_id,
                     target_session.session_key,
+                    config=cfg,
                     can_send=can_send,
                 )
             except Exception as exc:

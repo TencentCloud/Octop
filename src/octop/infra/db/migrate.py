@@ -1821,6 +1821,16 @@ def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_care_generation_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "proactive_care_config"):
+        return
+    _ensure_column(db, "proactive_care_config", "model_ref", "TEXT")
+    _ensure_column(db, "proactive_care_config", "reasoning_effort", "TEXT NOT NULL DEFAULT 'auto'")
+    _ensure_column(
+        db, "proactive_care_config", "generation_timeout_seconds", "INTEGER NOT NULL DEFAULT 30"
+    )
+
+
 def _ensure_care_push_reply_schema(db: DatabasePool) -> None:
     """Proactive care thread/message/reply tracking on ``care_push_records``. Idempotent."""
     if not _table_exists(db, "care_push_records"):
@@ -2572,6 +2582,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 27:
+        _ensure_care_generation_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -2839,6 +2854,7 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_control_blobs_schema(db)
     _ensure_thread_contributed_schema(db)
     _ensure_care_push_reply_schema(db)
+    _ensure_care_generation_schema(db)
     _ensure_invite_redemptions_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)

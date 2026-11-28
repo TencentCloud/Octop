@@ -9,14 +9,25 @@ import {
   Alert,
   Divider,
   Spin,
+  Select,
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
 import dayjs from "dayjs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
 import api from "../../../api";
-import type { ProactiveCareConfig } from "../../../api/types";
+import { providerApi } from "../../../api/modules/provider";
+import {
+  buildModelSelectOptions,
+  defaultModelFromForm,
+  defaultModelToForm,
+  modelOptionValue,
+} from "../../../utils/modelOptions";
+import type { ProactiveCareConfig, ResolvedModel } from "../../../api/types";
 import styles from "./ProactiveConfig.module.less";
+
+dayjs.extend(customParseFormat);
 
 interface Props {
   agentId: string;
@@ -35,38 +46,51 @@ export default function ProactiveConfig({
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
 
-  useEffect(() => {
-    fetchConfig();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId]);
+  const [models, setModels] = useState<ResolvedModel[] | null>(null);
+  const [defaultRef, setDefaultRef] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const selectedRef = Form.useWatch("model_ref", form) || defaultRef;
+  const reasoning = models?.find(
+    (model) => modelOptionValue(model) === selectedRef,
+  )?.reasoning_config;
 
-  const fetchConfig = async () => {
+  const loadFailed = t("proactiveConfig.loadFailed", "加载配置失败");
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      const config = await api.getProactiveCareConfig(agentId);
-      setEnabled(config.enabled);
-
-      form.setFieldsValue({
-        enabled: config.enabled,
-        active_hours_start: dayjs(
-          config.active_hours_start || "09:00",
-          "HH:mm",
-        ),
-        active_hours_end: dayjs(config.active_hours_end || "22:00", "HH:mm"),
-        min_interval_hours: config.min_interval_hours ?? 5,
-        max_interval_hours: config.max_interval_hours ?? 24,
+    Promise.all([
+      api.getProactiveCareConfig(agentId),
+      providerApi.listResolvedModels(agentId).catch(() => null),
+    ])
+      .then(([config, choices]) => {
+        if (cancelled) return;
+        setModels(choices);
+        setDefaultRef(config.default_model_ref ?? null);
+        setEnabled(config.enabled);
+        form.setFieldsValue({
+          ...config,
+          active_hours_start: dayjs(
+            config.active_hours_start || "09:00",
+            "HH:mm",
+          ),
+          active_hours_end: dayjs(config.active_hours_end || "22:00", "HH:mm"),
+          model_ref: defaultModelToForm(config.model_ref),
+          reasoning_effort: config.reasoning_effort ?? "auto",
+          generation_timeout_seconds: config.generation_timeout_seconds ?? 30,
+        });
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : loadFailed);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    } catch (err) {
-      const errMsg =
-        err instanceof Error
-          ? err.message
-          : t("proactiveConfig.loadFailed", "加载配置失败");
-      setError(errMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, form, reload, loadFailed]);
 
   const handleSave = async () => {
     try {
@@ -89,7 +113,9 @@ export default function ProactiveConfig({
         active_hours_end: endStr,
         min_interval_hours: values.min_interval_hours,
         max_interval_hours: values.max_interval_hours,
-        episode_filter: null,
+        model_ref: defaultModelFromForm(values.model_ref),
+        reasoning_effort: values.reasoning_effort,
+        generation_timeout_seconds: values.generation_timeout_seconds,
       };
 
       setSaving(true);
@@ -111,7 +137,7 @@ export default function ProactiveConfig({
   };
 
   const handleReset = () => {
-    fetchConfig();
+    setReload((count) => count + 1);
   };
 
   if (loading) {
@@ -129,7 +155,7 @@ export default function ProactiveConfig({
     return (
       <div className={styles.centerState}>
         <span className={styles.stateTextError}>{error}</span>
-        <Button size="small" onClick={fetchConfig} style={{ marginTop: 12 }}>
+        <Button size="small" onClick={handleReset} style={{ marginTop: 12 }}>
           {t("environments.retry", "重试")}
         </Button>
       </div>
@@ -336,6 +362,65 @@ export default function ProactiveConfig({
               />
             </Form.Item>
           </div>
+          <Form.Item
+            name="model_ref"
+            label={t("proactiveConfig.generationModel")}
+            extra={
+              models === null
+                ? t("proactiveConfig.modelsUnavailable")
+                : undefined
+            }
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              disabled={!enabled || models === null}
+              options={buildModelSelectOptions(
+                models ?? [],
+                t("proactiveConfig.followAgent"),
+              )}
+              onChange={() => form.setFieldValue("reasoning_effort", "auto")}
+            />
+          </Form.Item>
+          <Form.Item
+            name="reasoning_effort"
+            label={t("proactiveConfig.reasoningEffort")}
+          >
+            <Select
+              disabled={!enabled || models === null}
+              options={[
+                { value: "auto", label: t("proactiveConfig.modelDefault") },
+                ...(reasoning?.toggle
+                  ? [
+                      {
+                        value: "disabled",
+                        label: t("proactiveConfig.disableThinking"),
+                      },
+                    ]
+                  : []),
+                ...(reasoning?.efforts ?? []).map((value) => ({
+                  value,
+                  label: value,
+                })),
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="generation_timeout_seconds"
+            label={t("proactiveConfig.generationTimeout")}
+            extra={t("proactiveConfig.timeoutHint")}
+            rules={[
+              {
+                required: true,
+                type: "integer",
+                min: 1,
+                max: 3600,
+                message: t("proactiveConfig.timeoutRange"),
+              },
+            ]}
+          >
+            <InputNumber min={1} max={3600} precision={0} disabled={!enabled} />
+          </Form.Item>
         </Form>
 
         <div className={styles.actions}>

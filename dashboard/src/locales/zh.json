@@ -4657,6 +4657,15 @@
     "noAgentSelected": "请先在顶部切换器选择一个 agent"
   },
   "proactiveConfig": {
+    "modelsUnavailable": "模型列表加载失败，点击「重置」可重试。",
+    "generationModel": "关怀生成模型",
+    "followAgent": "跟随 Agent 默认模型",
+    "reasoningEffort": "思考档",
+    "modelDefault": "模型默认",
+    "disableThinking": "关闭思考",
+    "generationTimeout": "单次生成超时（秒）",
+    "timeoutHint": "超时后，若仍适合打扰，将用同一组事件再尝试一次。",
+    "timeoutRange": "请输入 1 到 3600 之间的整数。",
     "title": "主动关心设置",
     "description": "等对话闲下来、并且处在关心时段里，Octop 才会主动说一句，不会在你正在聊天时插话。",
     "enabled": "开启主动关心",

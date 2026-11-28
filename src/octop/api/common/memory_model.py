@@ -1,4 +1,4 @@
-"""Shared validation for a user-selected memory extraction model."""
+"""Validation for user-selected background models."""
 
 from typing import Any
 
@@ -9,6 +9,10 @@ from octop.infra.errors import ErrorCode, OctopError
 
 def validate_memory_model_ref(value: str | None, registry: Any, user_id: int) -> str | None:
     """Normalize an ``aux_model`` patch value: None / empty / "auto" → None (AUTO)."""
+    return validate_model_ref(value, registry, user_id, field="aux_model")
+
+
+def validate_model_ref(value: str | None, registry: Any, user_id: int, *, field: str) -> str | None:
     if value is None:
         return None
     ref = value.strip()
@@ -17,7 +21,7 @@ def validate_memory_model_ref(value: str | None, registry: Any, user_id: int) ->
     if not registry.providers.is_model_ref_usable(ref):
         raise HTTPException(
             status_code=400,
-            detail=f"aux_model {ref!r} is not an enabled model on a usable provider",
+            detail=f"{field} {ref!r} is not an enabled model on a usable provider",
         )
     if not registry.model_ref_allowed_for_user(user_id, ref):
         raise OctopError(ErrorCode.RESOURCE_NOT_ALLOWED, "resource is not visible to this user")

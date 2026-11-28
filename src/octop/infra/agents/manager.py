@@ -2400,6 +2400,17 @@ class AgentManager:
         if self._harness_manager is not None:
             self._harness_manager.clear_thread_model(agent_id, thread_id)
 
+    def configured_default_model_ref(
+        self, row: AgentRow, cfg: dict[str, Any] | None = None
+    ) -> str | None:
+        """Model used by the expert for background calls that follow its default."""
+        if cfg is None:
+            cfg = self._agent_config_dict(row)
+        return (
+            self._providers.resolve_explicit_default_model(row, cfg)
+            or self._resolve_configured_fallback_model_ref()
+        )
+
     def _resolve_configured_fallback_model_ref(self) -> str | None:
         """Return the configured fallback without applying runtime health."""
         name, model_id = self._repos.settings_repo.get_active_model()
@@ -5236,10 +5247,7 @@ class AgentManager:
             # first, else first usable) — so promotion works whenever chat does.
             # Per-turn AUTO routing is unaffected: the gateway resolves models via
             # ``resolve_explicit_default_model`` directly.
-            default_model=(
-                self._providers.resolve_explicit_default_model(row, cfg)
-                or self._resolve_configured_fallback_model_ref()
-            ),
+            default_model=self.configured_default_model_ref(row, cfg),
             system_prompt=system_prompt,
             memory=memory,
             backend=harness_backend,  # spec, or live OpenSandbox instance

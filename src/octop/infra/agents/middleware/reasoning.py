@@ -8,6 +8,8 @@ from typing import Any
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langgraph.config import get_config
 
+from octop.infra.agents.providers.reasoning import model_with_reasoning
+
 CONFIG_KEY = "octop_reasoning_overrides"
 
 
@@ -16,19 +18,8 @@ def _configured_request(request: ModelRequest[Any]) -> ModelRequest[Any]:
     overrides = configurable.get(CONFIG_KEY)
     if not isinstance(overrides, dict) or not overrides:
         return request
-    model = request.model
-    if not hasattr(model, "model_copy"):
-        return request
-    updates = dict(overrides.get("model_fields") or {})
-    extra = overrides.get("extra_body")
-    if isinstance(extra, dict) and extra and hasattr(model, "extra_body"):
-        current = dict(getattr(model, "extra_body", None) or {})
-        current.update(extra)
-        updates["extra_body"] = current
-    if not updates:
-        return request
-    configured = model.model_copy(update=updates)
-    return request.override(model=configured)
+    model = model_with_reasoning(request.model, overrides)
+    return request if model is request.model else request.override(model=model)
 
 
 class ReasoningRequestMiddleware(AgentMiddleware[Any, Any]):
