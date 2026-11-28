@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### 新增
+- 新增独立 `image-inspector` 工具插件：生成图片后可按需调用 `inspect_image`，将工作区原图送回当前多模态模型检查排版、遮挡、裁切和间距（#2283）
+
+### 修复
+- `image-inspector` 的视觉检查模型调用与父级会话流隔离，内部质检文本不会再被推送到 IM 或保存成额外的 AI 消息（#2286）
+- `image-inspector` 支持自定义 `OCTOP_HOME` / `OCTOP_DATA_DIR` 和 Docker sandbox 的 `.harness-materialize` 文件路径，避免可见图片被误报为不存在
+- `image-inspector` 遇到宿主机不可访问的沙箱路径时，继续尝试已允许的数据目录与 materialized 路径，避免在找到可读图片前提前报错（#2286）
+
 ## [1.0.3b8] - 2026-11-27
 
 ### 新增
