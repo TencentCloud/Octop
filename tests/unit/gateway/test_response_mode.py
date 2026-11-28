@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
+from langchain_core.messages import ToolMessage
 from octop_gateway.models import (
     FileContent,
     InboundMessage,
@@ -20,9 +22,288 @@ from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
+    withhold_pretool_stream_chunks,
     withhold_weixin_stream_preamble,
     wrap_weixin_stream_processor,
 )
+
+
+def _raw_call(name: str, index: int = 0, call_id: str = "call-1") -> dict[str, Any]:
+    return {"type": "tool_call_chunk", "name": name, "index": index, "id": call_id}
+
+
+def _raw_result(name: str | None, call_id: str = "call-1") -> dict[str, Any]:
+    return {
+        "type": "tool_result",
+        "messages": [ToolMessage(content="ok", name=name, tool_call_id=call_id)],
+    }
+
+
+def _raw_text(text: str) -> dict[str, Any]:
+    return {"type": "token", "content": text, "node": "agent_main"}
+
+
+@pytest.mark.parametrize(
+    "chunks,expected",
+    [
+        pytest.param(
+            [_raw_text("English final"), {"type": "delta", "text": "中文"}],
+            "English final中文",
+            id="no-tools",
+        ),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("current_time"),
+                _raw_result("current_time"),
+                _raw_text("final"),
+            ],
+            "final",
+            id="ordinary-tool",
+        ),
+        pytest.param(
+            [
+                _raw_text("first"),
+                _raw_call("ls"),
+                _raw_result("ls"),
+                _raw_text("second"),
+                _raw_call("cronjob_list", call_id="call-2"),
+                _raw_result("cronjob_list", "call-2"),
+                _raw_text("final"),
+            ],
+            "final",
+            id="successive-tools",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                _raw_call("ask_agent"),
+                _raw_result("ask_agent"),
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="team-dispatch",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                _raw_call("ask_"),
+                _raw_call("agent", call_id=""),
+                _raw_result(None),
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="fragmented-name",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                _raw_call("ask_"),
+                _raw_result("ask_agent"),
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="result-completes-name",
+        ),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("ask_agent"),
+                _raw_call("ls", index=1, call_id="call-2"),
+                _raw_result("ask_agent"),
+                _raw_result("ls", "call-2"),
+                _raw_text("final"),
+            ],
+            "final",
+            id="mixed-parallel-tools",
+        ),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("ask_agent"),
+                _raw_call("ls", index=1, call_id="call-2"),
+                _raw_result(None, "call-2"),
+                _raw_result(None),
+                _raw_text("final"),
+            ],
+            "final",
+            id="parallel-result-ids",
+        ),
+        pytest.param(
+            [_raw_text("progress"), _raw_result("ls"), _raw_text("final")],
+            "final",
+            id="result-without-call-chunks",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                {"type": "tool_result", "name": "ask_agent"},
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="chunk-name-fallback",
+        ),
+        pytest.param(
+            [_raw_text("progress"), {"type": "tool_result"}, _raw_text("final")],
+            "final",
+            id="unknown-tool",
+        ),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("ls"),
+                _raw_result("ls"),
+                _raw_text("final"),
+                _raw_result("ls"),
+            ],
+            "final",
+            id="result-replay-after-answer",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                _raw_call("ask_agent"),
+                _raw_result("ask_agent"),
+                _raw_call("ls", call_id="call-2"),
+                _raw_result("ls", "call-2"),
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="preserve-approved-dispatch",
+        ),
+        pytest.param([_raw_text("progress"), _raw_call("ls")], "", id="unfinished-tool-call"),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("ask_agent"),
+                _raw_result("ask_agent"),
+                {"type": "error", "message": "failed"},
+            ],
+            "",
+            id="error-clears-pending-dispatch",
+        ),
+        pytest.param(
+            [_raw_text("progress"), {"type": "hitl_required", "request": {}}],
+            "",
+            id="hitl-clears-pending",
+        ),
+        pytest.param(
+            [
+                _raw_text("progress"),
+                _raw_call("ask_agent"),
+                {
+                    "type": "tool_result",
+                    "messages": [
+                        {"role": "tool", "name": "ls", "tool_call_id": "historical"},
+                        {"role": "tool", "name": "ask_agent", "tool_call_id": "call-1"},
+                    ],
+                },
+                _raw_text("final"),
+            ],
+            "progressfinal",
+            id="history-replay-alongside-live-result",
+        ),
+        pytest.param(
+            [
+                _raw_text("dispatch"),
+                {"type": "tool_call_chunk", "id": "call-1", "name": "ask_"},
+                {"type": "tool_call_chunk", "id": "call-1", "name": "agent"},
+                _raw_result(None),
+                _raw_text("final"),
+            ],
+            "dispatchfinal",
+            id="id-without-index",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_raw_stream_withholds_each_pretool_segment(
+    chunks: list[dict[str, Any]], expected: str
+) -> None:
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    output = [chunk async for chunk in withhold_pretool_stream_chunks(stream())]
+
+    assert (
+        "".join(
+            str(c.get("content") or c.get("text") or "")
+            for c in output
+            if c["type"] in {"token", "delta"}
+        )
+        == expected
+    )
+    original_control = [c for c in chunks if c["type"] not in {"token", "delta"}]
+    output_control = [c for c in output if c["type"] not in {"token", "delta"}]
+    assert len(output_control) == len(original_control)
+    assert all(a is b for a, b in zip(output_control, original_control, strict=True))
+
+
+@pytest.mark.parametrize("terminal", ["error", "hitl_required", "cancel"])
+@pytest.mark.asyncio
+async def test_raw_preamble_filter_closes_source(terminal: str) -> None:
+    closed = False
+
+    async def stream():
+        nonlocal closed
+        try:
+            yield _raw_text("pending")
+            yield {"type": terminal}
+            await asyncio.Event().wait()
+        finally:
+            closed = True
+
+    filtered = withhold_pretool_stream_chunks(stream())
+    assert (await anext(filtered))["type"] == terminal
+    await close_event_stream(filtered)
+    assert closed
+
+
+@pytest.mark.asyncio
+async def test_raw_preamble_filter_resolves_name_without_streamed_call_id() -> None:
+    async def stream():
+        yield _raw_text("dispatch")
+        yield _raw_call("ask_", call_id="")
+        yield _raw_result("ask_agent")
+        yield _raw_text("final")
+
+    output = [c async for c in withhold_pretool_stream_chunks(stream())]
+    assert [c["content"] for c in output if c["type"] == "token"] == ["dispatch", "final"]
+
+
+@pytest.mark.asyncio
+async def test_raw_preamble_filter_keeps_parallel_team_dispatch() -> None:
+    async def stream():
+        yield _raw_text("dispatch")
+        yield _raw_call("ask_", call_id="call-1")
+        yield _raw_call("ask_", index=1, call_id="call-2")
+        yield _raw_call("agent", call_id="")
+        yield _raw_call("agent", index=1, call_id="")
+        yield _raw_result(None, "call-2")
+        yield _raw_result(None, "call-1")
+        yield _raw_text("final")
+
+    output = [c async for c in withhold_pretool_stream_chunks(stream())]
+    assert [c["content"] for c in output if c["type"] == "token"] == ["dispatch", "final"]
+
+
+@pytest.mark.asyncio
+async def test_raw_preamble_filter_passes_usage_reasoning_and_state_unchanged() -> None:
+    control = [
+        {"type": "usage", "usage": {"output_tokens": 10}},
+        {"type": "reasoning", "content": "private"},
+        {"type": "state_snapshot", "data": {"messages": []}},
+    ]
+
+    async def stream():
+        yield _raw_text("answer")
+        for chunk in control:
+            yield chunk
+
+    output = [chunk async for chunk in withhold_pretool_stream_chunks(stream())]
+    assert output[:-1] == control
+    assert output[-1]["content"] == "answer"
 
 
 async def _events(*events: MessageEvent) -> AsyncIterator[MessageEvent]:
