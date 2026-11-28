@@ -241,6 +241,23 @@ class TurnHistoryTracker:
     _error_message: str = field(default="", init=False)
     _error_code: str | None = field(default=None, init=False)
     _turn_duration_ms: int | None = field(default=None, init=False)
+    _persisted: bool = field(default=False, init=False)
+
+    @property
+    def persisted(self) -> bool:
+        """Whether this turn was already written to the history projection."""
+        return self._persisted
+
+    def mark_persisted(self) -> bool:
+        """Claim the single history write for this turn.
+
+        The streaming ``finally`` and the shutdown flush can both reach the
+        projection for the same turn. Only the first caller may write.
+        """
+        if self._persisted:
+            return False
+        self._persisted = True
+        return True
 
     def note_turn_duration(self, duration_ms: int) -> None:
         if duration_ms < 0:
