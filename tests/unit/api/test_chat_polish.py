@@ -25,8 +25,14 @@ from octop.infra.utils.llm_text import llm_text_content as _llm_text_content
 def test_enrich_history_tool_media_prefers_entry_agent_id(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
 
-    def fake_enrich(output: str, *, agent_id: str, workspace: Any = None) -> str:
-        _ = workspace
+    def fake_enrich(
+        output: str,
+        *,
+        agent_id: str,
+        workspace: Any = None,
+        tool_name: str | None = None,
+    ) -> str:
+        _ = (workspace, tool_name)
         seen.append(agent_id)
         return f"{output}|{agent_id}"
 

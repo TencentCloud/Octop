@@ -3,7 +3,9 @@ import {
   agentAttachmentAccessUrl,
   agentMediaPreviewUrl,
   canonicalizeMediaApiUrl,
+  collectToolMediaFromToolData,
   isHostAbsoluteMediaPath,
+  isMediaPushTool,
   needsAuthBlobFetch,
   parseStructuredToolOutput,
   parseToolExecutionFeedback,
@@ -200,5 +202,62 @@ describe("agentAttachmentAccessUrl", () => {
     expect(
       agentAttachmentAccessUrl("a1", "inbound/x.pdf", "application/pdf"),
     ).toContain("/workspace/download?");
+  });
+});
+
+describe("collectToolMediaFromToolData", () => {
+  it("matches backend delivery tool allowlist", () => {
+    expect(isMediaPushTool("send_file_to_user")).toBe(true);
+    expect(isMediaPushTool("namespace/desktop_screenshot")).toBe(true);
+    expect(isMediaPushTool("generate_image")).toBe(true);
+    expect(isMediaPushTool("ls")).toBe(false);
+    expect(isMediaPushTool("read_file")).toBe(false);
+    expect(isMediaPushTool("browser_use")).toBe(false);
+  });
+
+  it("ignores plain-text and argument image paths for non-delivery tools", () => {
+    const lsMedia = collectToolMediaFromToolData(
+      {
+        name: "ls",
+        arguments: JSON.stringify({ path: "inbound" }),
+        output: "/Users/alice/.octop/agents/A1/inbound/1795000000_old.png",
+      },
+      "A1",
+    );
+    expect(lsMedia.images).toEqual([]);
+
+    const readMedia = collectToolMediaFromToolData(
+      {
+        name: "read_file",
+        arguments: JSON.stringify({ file_path: "inbound/1795000000_old.png" }),
+        output: "Read image metadata",
+      },
+      "A1",
+    );
+    expect(readMedia.images).toEqual([]);
+  });
+
+  it("keeps plain-text and argument inference for delivery tools", () => {
+    const shotMedia = collectToolMediaFromToolData(
+      {
+        name: "desktop_screenshot",
+        output:
+          "Screenshot saved to /Users/alice/.octop/agents/A1/outbound/screen.png",
+      },
+      "A1",
+    );
+    expect(shotMedia.images).toHaveLength(1);
+    expect(shotMedia.images[0].filename).toBe("screen.png");
+
+    const sendMedia = collectToolMediaFromToolData(
+      {
+        name: "send_file_to_user",
+        arguments: JSON.stringify({ file_path: "outbound/chart.png" }),
+        output: "Sent file",
+      },
+      "A1",
+    );
+    expect(sendMedia.images).toHaveLength(1);
+    expect(sendMedia.images[0].filename).toBe("chart.png");
   });
 });
