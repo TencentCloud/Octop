@@ -34,9 +34,9 @@ describe("showGroupVisibilityOption", () => {
     expect(showGroupVisibilityOption(ready(), "owner")).toBe(true);
     expect(showGroupVisibilityOption(ready(), "all")).toBe(true);
     expect(showGroupVisibilityOption(ready(), "groups")).toBe(true);
-    expect(
-      showGroupVisibilityOption(ready({ groupCount: 2 }), "all"),
-    ).toBe(true);
+    expect(showGroupVisibilityOption(ready({ groupCount: 2 }), "all")).toBe(
+      true,
+    );
   });
 });
 

@@ -21,6 +21,7 @@ from octop.infra.connectors.catalog import (
     get_catalog_entry,
     is_mcp_oauth_remote,
 )
+from octop.infra.connectors.extensions import get_connector_extension
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.connectors.oauth.discovery import discover_oauth_from_mcp_url
@@ -427,6 +428,10 @@ async def probe_connector(
         from octop.infra.connectors.qcc import bearer_token, probe
 
         return await probe(bearer_token(cred_payload))
+
+    extension = get_connector_extension(entry.kind)
+    if extension is not None:
+        return await extension.probe(cred_payload)
 
     if entry.mcp_mode == "gateway":
         try:

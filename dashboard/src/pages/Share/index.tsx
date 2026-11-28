@@ -27,8 +27,12 @@ function turnLabel(group: MessageGroup): string {
   if (!first) return "";
   if (first.role === "user") return first.author?.displayName?.trim() || "";
   return (
-    group.messages.find((item) => item.speakerFace?.name)?.speakerFace?.name?.trim() ||
-    group.messages.find((item) => item.speakerAgentId)?.speakerAgentId?.trim() ||
+    group.messages
+      .find((item) => item.speakerFace?.name)
+      ?.speakerFace?.name?.trim() ||
+    group.messages
+      .find((item) => item.speakerAgentId)
+      ?.speakerAgentId?.trim() ||
     ""
   );
 }

@@ -688,6 +688,9 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        from octop.infra.connectors.mcp_tool_cache import StdioMCPTools
+
+        self._stdio_mcp_tools = StdioMCPTools(self._connector_svc, repos, root=self._paths.root)
         # User-scoped custom MCP tools: (user_id, server_name, fingerprint) -> tools
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
         self._mcp_tool_cache_locks: dict[tuple[int, str], asyncio.Lock] = {}
@@ -730,6 +733,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        self._stdio_mcp_tools.replace_persistence(self._connector_svc, repos)
 
     def set_cron_manager(self, cron_manager: CronManager) -> None:
         """Attach the process-wide CronManager (must be set before boot())."""
@@ -814,6 +818,7 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        await self._stdio_mcp_tools.close()
         # The idle sweep reads the control-plane DB on a worker thread. Wait for
         # that read to finish before the caller closes the shared connection.
         sweep = self._reclaim_sweep_task
@@ -1507,6 +1512,7 @@ class AgentManager:
 
     async def stop(self, agent_id: str) -> None:
         """Unload agent from harness runtime and persist ``last_state=stopped``."""
+        await self._stdio_mcp_tools.close(agent_id=agent_id)
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
@@ -2694,6 +2700,7 @@ class AgentManager:
             self._connector_user_override.pop(agent_id, None)
 
     async def reload_connectors_for_user(self, user_id: int) -> None:
+        await self._stdio_mcp_tools.close(user_id=user_id)
         self.invalidate_mcp_tool_cache(user_id)
         reloaded: set[str] = set()
         for row in self._repos.agent_repo.list_by_user(user_id, include_disabled=False):
@@ -2996,6 +3003,16 @@ class AgentManager:
                         custom_configs[name] = spec
                         load_user[name] = owner_id
 
+        await self._stdio_mcp_tools.prepare_tools(
+            agent,
+            agent_id=agent_id,
+            user_id=uid,
+            names=names,
+            custom_configs=custom_configs,
+            load_user=load_user,
+        )
+        _sanitize_bound_mcp_tools(agent)
+
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
         attached_raw = getattr(agent, "_mcp_attached_user", None)
         attached: dict[str, int] = attached_raw if isinstance(attached_raw, dict) else {}
@@ -3029,7 +3046,11 @@ class AgentManager:
         if custom_missing and uid is not None:
             for name in custom_missing:
                 spec = custom_configs[name]
-                if not isinstance(spec, dict) or not spec.get("transport"):
+                if (
+                    not isinstance(spec, dict)
+                    or not spec.get("transport")
+                    or spec.get("transport") == "stdio"
+                ):
                     continue
                 try:
                     tools = await self._get_or_load_mcp_tools(load_user.get(name, uid), name, spec)
@@ -3125,6 +3146,16 @@ class AgentManager:
                         sanitize_plugin_tool_names(extra)
                         agent.append_mcp_tools(extra)
 
+            await self._stdio_mcp_tools.prepare_tools(
+                agent,
+                agent_id=agent_id,
+                user_id=uid,
+                names=names,
+                custom_configs=custom_configs,
+                load_user=load_user,
+            )
+            _sanitize_bound_mcp_tools(agent)
+
             # Full reload drops previously appended custom tools — re-inject from cache.
             if custom_configs and uid is not None:
                 agent = self.get_agent(agent_id)
@@ -3135,7 +3166,11 @@ class AgentManager:
                     if any(t.startswith(f"{name}_") for t in tool_set):
                         continue
                     spec = custom_configs[name]
-                    if not isinstance(spec, dict) or not spec.get("transport"):
+                    if (
+                        not isinstance(spec, dict)
+                        or not spec.get("transport")
+                        or spec.get("transport") == "stdio"
+                    ):
                         continue
                     try:
                         tools = await self._get_or_load_mcp_tools(
@@ -4598,6 +4633,7 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
+        await self._stdio_mcp_tools.close(agent_id=agent_id)
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
             row = self._repos.agent_repo.get(agent_id)
