@@ -27,6 +27,7 @@ from octop.i18n.domains.agents import (
     NO_MODELS_CONFIGURED,
     format_agent_start_error,
 )
+from octop.infra import extensions
 from octop.infra.agents.acp import (
     attach_managed_turn,
     install_acp_file_edits,
@@ -1057,6 +1058,9 @@ class AgentManager:
                     require_present=True,
                 )
                 self._assert_model_ref(spec.user_id, spec.default_model)
+            config = extensions.normalize_agent_config(
+                config, agent_id=agent_id, user_id=spec.user_id, current=None
+            )
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
@@ -1265,7 +1269,12 @@ class AgentManager:
             out.pop("system_files_path", None)
         if pin_workspace_dir and "workspace_dir" in current_raw:
             out["workspace_dir"] = current_raw["workspace_dir"]
-        return out
+        return extensions.normalize_agent_config(
+            out,
+            agent_id=agent_id,
+            user_id=row.user_id if row is not None else None,
+            current=current_raw,
+        )
 
     async def update(self, agent_id: str, **kwargs: Any) -> AgentRow:
         """Update agent config in DB and reload harness agent in the background."""
@@ -1386,6 +1395,7 @@ class AgentManager:
         existing = self._repos.agent_repo.get(agent_id)
         if existing is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        extensions.check_agent_share(existing, shared)
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -1414,6 +1424,7 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._teams.assert_can_delete_agent(agent_id)
+        extensions.check_agent_delete(row)
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             agent_config_from_row,
             delete_agent_memory_and_checkpoints,
@@ -1766,12 +1777,17 @@ class AgentManager:
             return {}
         return self._agent_config_dict(row)
 
-    def persist_harness_config(self, agent_id: str, cfg: dict[str, Any], **extra: Any) -> None:
+    def persist_harness_config(
+        self, agent_id: str, cfg: dict[str, Any], **extra: Any
+    ) -> dict[str, Any]:
         """Write harness keys to ``config_json`` and lift leftover profile fields.
 
         ``dumps_config`` strips profile keys (including ``skill_package_ids``). If those
         still only live in the dict, copy them onto empty columns so a later overlay
         does not drop mounts.
+
+        Returns the config as stored (after internal-layout pinning and extension
+        normalizers), which callers must use for any runtime update.
         """
         cfg = self._preserve_internal_layout(agent_id, cfg)
         lifted = extract_profile_from_config(cfg)
@@ -1784,6 +1800,7 @@ class AgentManager:
                     kwargs[key] = value
         kwargs.update(extra)
         self._repos.agent_repo.update_config(agent_id, **kwargs)
+        return cfg
 
     def resolve_workspace_dir(self, agent_id: str, *, persist_if_missing: bool = True) -> Path:
         """On-disk workspace for Octop host FS ops (delete, memory path, …).
@@ -3462,8 +3479,8 @@ class AgentManager:
 
         cfg = self.get_config(agent_id)
         store_skills_disabled(cfg, disabled)
-        self.persist_harness_config(agent_id, cfg)
-        self.sync_skills_disabled(agent_id, skills_disabled_set(cfg))
+        stored = self.persist_harness_config(agent_id, cfg)
+        self.sync_skills_disabled(agent_id, skills_disabled_set(stored))
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""

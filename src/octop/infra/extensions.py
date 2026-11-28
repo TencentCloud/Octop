@@ -19,6 +19,18 @@ Every hook is optional; Octop calls only the ones the object defines:
     A :class:`PublicPaths` of API paths that skip JWT (the route must
     authenticate on its own) and that stay open before the first user exists.
 
+Agent policy (sync; raise an ``OctopError`` to refuse):
+
+``normalize_agent_config(config, *, agent_id, user_id, current)``
+    Return the config to store. ``current`` is ``None`` on create (after
+    Octop's own policy checks) and the stored config on every later write.
+``check_agent_share(row, shared)``
+    Before an agent's shared flag changes.
+``check_agent_delete(row)``
+    Before an agent is deleted.
+``hide_agent_from_peers(row)``
+    ``True`` keeps the agent out of team rosters and agent-to-agent calls.
+
 Harness-level tools, skills, and channels keep using ``octop_harness.plugins``;
 this group is for what lives in the Octop server itself.
 """
@@ -108,6 +120,38 @@ def extension_public_paths() -> PublicPaths:
         setup_exact=tuple(setup_exact),
         setup_prefixes=tuple(setup_prefixes),
     )
+
+
+def normalize_agent_config(
+    config: dict[str, Any],
+    *,
+    agent_id: str,
+    user_id: int | None,
+    current: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Pass ``config`` through every extension's ``normalize_agent_config``."""
+    for ext_name, hook in extension_hooks("normalize_agent_config"):
+        result = hook(config, agent_id=agent_id, user_id=user_id, current=current)
+        if not isinstance(result, dict):
+            raise TypeError(f"extension {ext_name!r}: normalize_agent_config must return a dict")
+        config = result
+    return config
+
+
+def check_agent_share(row: Any, shared: bool) -> None:
+    for _ext_name, hook in extension_hooks("check_agent_share"):
+        hook(row, shared)
+
+
+def check_agent_delete(row: Any) -> None:
+    for _ext_name, hook in extension_hooks("check_agent_delete"):
+        hook(row)
+
+
+def hide_agent_from_peers(row: Any) -> bool:
+    if row is None:
+        return False
+    return any(hook(row) for _ext_name, hook in extension_hooks("hide_agent_from_peers"))
 
 
 async def run_startup_hooks(server: Any) -> tuple[str, ...]:

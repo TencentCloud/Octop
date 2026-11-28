@@ -180,3 +180,30 @@ def test_admin_may_dispatch_private_member_on_roster(tmp_path: Path) -> None:
     peers = mgr.team.list_peers(3, exclude_agent_id="host")
     assert {entry.agent_id for entry in peers} == {"mine", "exp-a", "exp-b", "private"}
     assert mgr.team._resolve_peer_entry("host", "private", 3).agent_id == "private"
+
+
+def test_extension_can_hide_members_from_peers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra import extensions
+    from octop.infra.agents.teams.service import _user_may_use_member
+    from octop.infra.extensions import load_extensions
+
+    mgr, rows = _registry(tmp_path)
+    hidden = {id(rows["mine"]), id(rows["exp-a"])}
+    product = SimpleNamespace(hide_agent_from_peers=lambda row: id(row) in hidden)
+    monkeypatch.setattr(
+        extensions, "entry_points", lambda group: [SimpleNamespace(name="p", load=lambda: product)]
+    )
+    load_extensions.cache_clear()
+    try:
+        _wire(mgr, rows)
+        # "mine" comes from the harness same-user list, "exp-a" from the shared allowlist.
+        peers = mgr.team.list_peers(3, exclude_agent_id="host")
+        assert {entry.agent_id for entry in peers} == {"exp-b"}
+        for agent_id in ("mine", "exp-a"):
+            with pytest.raises(ValueError, match="not available as a peer"):
+                mgr.team._resolve_peer_entry("host", agent_id, 3)
+        assert not _user_may_use_member(rows["exp-a"], SimpleNamespace(id=1, is_admin=True))  # type: ignore[arg-type]
+    finally:
+        load_extensions.cache_clear()
