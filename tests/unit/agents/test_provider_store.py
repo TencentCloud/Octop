@@ -541,15 +541,21 @@ def test_build_harness_configs_infers_vision_from_model_id(store: ProviderStore)
         api_key="sk-test",
         models_json=json.dumps(
             [
-                {"id": "gpt-4o", "name": "GPT-4o", "enabled": True, "input": ["text"]},
+                {"id": "gpt-4o", "name": "GPT-4o", "enabled": True},
+                {"id": "qwen2.5-vl", "name": "Qwen VL", "enabled": True, "input": ["text"]},
+                {"id": "glm-5-w8a8-vllm-Bige", "name": "GLM vLLM", "enabled": True},
                 {"id": "deepseek-chat", "name": "DeepSeek", "enabled": True, "input": ["text"]},
             ]
         ),
     )
     models = store.build_harness_configs()[0].models
     gpt4o = next(m for m in models if m.id == "gpt-4o")
+    qwen_vl = next(m for m in models if m.id == "qwen2.5-vl")
+    glm_vllm = next(m for m in models if m.id == "glm-5-w8a8-vllm-Bige")
     deepseek = next(m for m in models if m.id == "deepseek-chat")
     assert "image" in gpt4o.input
+    assert qwen_vl.input == ["text"]
+    assert glm_vllm.input == ["text"]
     assert deepseek.input == ["text"]
 
 
@@ -613,11 +619,20 @@ def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: Provi
         models_json=json.dumps(
             [
                 {"id": "text-only", "name": "text", "enabled": True, "input": ["text"]},
-                {"id": "gpt-4o", "name": "GPT-4o", "enabled": True, "input": ["text"]},
+                {
+                    "id": "glm-5-w8a8-vllm-Bige",
+                    "name": "GLM vLLM",
+                    "enabled": True,
+                    "input": ["text"],
+                },
+                {"id": "qwen2.5-vl", "name": "Qwen VL", "enabled": True, "input": ["text"]},
+                {"id": "gpt-4o", "name": "GPT-4o", "enabled": True},
             ]
         ),
     )
     assert store.resolve_multimodal_model_ref() == "p/gpt-4o"
+    multimodal = store.list_auto_route_candidates(needs_multimodal=True)
+    assert [c.ref for c in multimodal] == ["p/gpt-4o"]
 
 
 def test_list_auto_route_candidates_filters_and_preserves_capacity(
