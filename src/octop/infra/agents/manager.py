@@ -4965,6 +4965,12 @@ class AgentManager:
         if not team_host:
             knowledge_tools = build_knowledge_tools(KnowledgeToolServices(self))
 
+        api_tools: list[Any] = []
+        if not team_host:
+            from octop.infra.agents.octop_api import build_octop_api_tool  # noqa: PLC0415
+
+            api_tools = [build_octop_api_tool(self._repos)]
+
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:
             from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
@@ -5028,7 +5034,7 @@ class AgentManager:
             plugin_tools,
             reserved={
                 str(getattr(t, "name", ""))
-                for t in [*(cron_tools or []), *knowledge_tools, *mobile_tools]
+                for t in [*(cron_tools or []), *knowledge_tools, *api_tools, *mobile_tools]
             },
         )
         self._plugin_tool_labels[row.agent_id] = {
@@ -5102,6 +5108,7 @@ class AgentManager:
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
+        merged_tools.extend(api_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
         merged_tools.extend(
@@ -5280,6 +5287,12 @@ class AgentManager:
         applied = self._merge_agently_write_interrupts(
             applied, self._connector_uid_for(row) if not team_host else None
         )
+        if api_tools:
+            from octop.infra.agents.octop_api import write_interrupt_on  # noqa: PLC0415
+
+            applied = replace(
+                applied, interrupt_on={**(applied.interrupt_on or {}), **write_interrupt_on()}
+            )
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)

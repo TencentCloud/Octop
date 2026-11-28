@@ -2158,6 +2158,7 @@
     "cronjob_delete": "Delete cron job",
     "cronjob_run_now": "Run cron job now",
     "search_knowledge": "Search knowledge base",
+    "octop_api": "Call Octop API",
     "agent_list": "List experts",
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",

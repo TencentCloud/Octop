@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, Header, Query, Request
 
+from octop.infra.auth.agent_access import agent_request_allowed
 from octop.infra.auth.tokens import (
     PURPOSE_ACCESS,
+    PURPOSE_AGENT,
+    signed_token_purpose,
     token_mfa_version,
     token_password_version,
     token_purpose,
@@ -88,6 +91,26 @@ def is_jwt_exempt_path(path: str) -> bool:
     return path in ext.exact or any(path.startswith(p) for p in ext.prefixes)
 
 
+def enforce_agent_token_boundary(request: Request, server: OctopServer) -> None:
+    """Refuse an ``agent`` token outside its boundary, on every route.
+
+    Runs before the JWT exemptions: sign-in and other public routes ignore the
+    bearer token, so they would otherwise accept a request the agent boundary
+    forbids.
+    """
+    raw = extract_raw_token(
+        authorization=request.headers.get("authorization"),
+        access_token=request.query_params.get("access_token"),
+    )
+    if not raw or server.services is None:
+        return
+    secret = server.services.secret_repo.get("jwt")
+    if secret is None or signed_token_purpose(secret, raw) != PURPOSE_AGENT:
+        return
+    if not agent_request_allowed(request.method, request.url.path):
+        raise OctopError(ErrorCode.FORBIDDEN, "not available to agents")
+
+
 def is_jwt_exempt_request(request: Request) -> bool:
     return is_jwt_exempt_path(request.url.path)
 
@@ -134,12 +157,28 @@ def _decode(server: OctopServer, token: str) -> dict[str, Any]:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
 
 
-def resolve_user_from_token(server: OctopServer, token: str) -> User:
+def resolve_user_from_token(
+    server: OctopServer,
+    token: str,
+    *,
+    method: str | None = None,
+    path: str | None = None,
+) -> User:
+    """Resolve the user of an access token.
+
+    ``agent`` tokens (minted by the ``octop_api`` tool) are accepted too, but only
+    when the caller passes the request ``method`` and ``path`` and they fall inside
+    :func:`octop.infra.auth.agent_access.agent_request_allowed`.
+    """
     payload = _decode(server, token)
     try:
         purpose = token_purpose(payload)
     except InvalidToken as exc:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
+    if purpose == PURPOSE_AGENT and (
+        method is None or path is None or not agent_request_allowed(method, path)
+    ):
+        raise OctopError(ErrorCode.FORBIDDEN, "not available to agents")
     # Fail closed: only access tokens are accepted on normal API paths.
     # Missing purpose ≡ access only while the user's mfa_version is still 0.
     assert server.services is not None
@@ -152,7 +191,7 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
     if purpose is None:
         if current_version != 0:
             raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
-    elif purpose != PURPOSE_ACCESS:
+    elif purpose not in (PURPOSE_ACCESS, PURPOSE_AGENT):
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
     try:
         claim_version = token_mfa_version(payload)
@@ -215,7 +254,7 @@ def authenticate_request(request: Request, server: OctopServer) -> User:
     )
     if not raw:
         raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
-    return resolve_user_from_token(server, raw)
+    return resolve_user_from_token(server, raw, method=request.method, path=request.url.path)
 
 
 async def current_user(
@@ -230,7 +269,7 @@ async def current_user(
     raw = extract_raw_token(authorization=authorization, access_token=access_token)
     if not raw:
         raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
-    return resolve_user_from_token(server, raw)
+    return resolve_user_from_token(server, raw, method=request.method, path=request.url.path)
 
 
 def require_permission(key: str) -> Callable[..., Awaitable[User]]:
