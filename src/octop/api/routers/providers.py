@@ -371,6 +371,37 @@ async def list_resolved_models(
     )
 
 
+class CompactionModelBody(BaseModel):
+    model: str | None = Field(
+        description="Default /compact provider/model, or null to follow the conversation."
+    )
+
+
+class CompactionModelView(CompactionModelBody):
+    restricted: bool = False
+
+
+@router.get("/compaction-model", summary="Read the global manual compression model")
+async def get_compaction_model(
+    user: Any = Depends(current_user), server: Any = Depends(get_server)
+) -> CompactionModelView:
+    registry = server.app_runtime.agent_registry
+    ref = registry.get_global_compaction_model()
+    restricted = bool(ref and not registry.model_ref_allowed_for_user(user.id, ref))
+    return CompactionModelView(model=None if restricted else ref, restricted=restricted)
+
+
+@router.put("/compaction-model", summary="Set the global manual compression model")
+async def set_compaction_model(
+    body: CompactionModelBody,
+    user: Any = Depends(require_permission("providers")),
+    server: Any = Depends(get_server),
+) -> CompactionModelBody:
+    ref = (body.model or "").strip() or None
+    server.app_runtime.agent_registry.set_global_compaction_model(user.id, ref)
+    return CompactionModelBody(model=ref)
+
+
 class ActiveModelBody(BaseModel):
     provider_name: str
     model: str

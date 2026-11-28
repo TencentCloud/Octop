@@ -36,6 +36,7 @@ export type AgentRuntimeApiFields = Partial<
   Partial<Record<AgentRuntimeFlagKey, boolean | null>>;
 
 export type AgentCompactionFormValues = {
+  model?: string | null;
   enabled?: boolean;
   trigger_fraction?: number | null;
   keep_fraction?: number | null;
@@ -43,6 +44,7 @@ export type AgentCompactionFormValues = {
 };
 
 export type AgentCompactionRequest = {
+  model?: string | null;
   enabled?: boolean | null;
   trigger_fraction?: number | null;
   keep_fraction?: number | null;
@@ -68,6 +70,7 @@ function readCompaction(value: unknown): AgentCompactionFormValues {
       ? (value as Record<string, unknown>)
       : {};
   return {
+    ...(typeof record.model === "string" ? { model: record.model } : {}),
     enabled: record.enabled !== false,
     trigger_fraction: readNumber(record.trigger_fraction) ?? null,
     keep_fraction: readNumber(record.keep_fraction) ?? null,
@@ -92,6 +95,7 @@ function compactionRequest(
   const trim = finiteNumber(current?.trim_tokens);
   if (!clearMissing) {
     const request: AgentCompactionRequest = {};
+    if (current?.model) request.model = current.model;
     if (enabled === false) request.enabled = false;
     if (trigger != null) request.trigger_fraction = trigger;
     if (keep != null) request.keep_fraction = keep;
@@ -99,6 +103,7 @@ function compactionRequest(
     return Object.keys(request).length > 0 ? request : undefined;
   }
   return {
+    ...(current?.model !== undefined ? { model: current.model || null } : {}),
     enabled,
     trigger_fraction: trigger,
     keep_fraction: keep,

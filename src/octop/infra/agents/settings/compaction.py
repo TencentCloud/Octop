@@ -58,6 +58,9 @@ def normalize_compaction(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     cleaned: dict[str, Any] = {}
+    model = value.get("model")
+    if isinstance(model, str) and (model == "session" or "/" in model):
+        cleaned["model"] = model.strip()
     enabled = value.get("enabled")
     if isinstance(enabled, bool) and enabled is False:
         cleaned["enabled"] = False
@@ -82,6 +85,9 @@ def apply_compaction_update(cfg: dict[str, Any], value: Any) -> dict[str, Any]:
     ``None`` and an empty or default-only object remove the key.
     """
     merged = dict(cfg)
+    existing = compaction_for_api(cfg) or {}
+    if isinstance(value, dict) and "model" not in value and "model" in existing:
+        value = {**value, "model": existing["model"]}
     normalized = normalize_compaction(value)
     if normalized is None:
         merged.pop(COMPACTION_CONFIG_KEY, None)

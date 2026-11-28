@@ -14,7 +14,11 @@ from octop.api.common.agent import (
     assert_agent_access_row,
     assert_agent_owner,
 )
-from octop.api.common.agent_runtime import AgentRuntimeFields, persisted_agent_settings
+from octop.api.common.agent_runtime import (
+    AgentRuntimeFields,
+    persisted_agent_settings,
+    validate_compaction_override,
+)
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
@@ -379,7 +383,9 @@ async def create_agent(
         default_model=body.default_model,
         system_prompt=body.system_prompt,
         config=body.config,
-        runtime_config=persisted_agent_settings(body, exclude_unset=True),
+        runtime_config=persisted_agent_settings(
+            body, exclude_unset=True, registry=server.app_runtime.agent_registry, user_id=user.id
+        ),
         icon=body.icon,
         template_name=body.template_name,
         is_shared=body.is_shared,
@@ -466,6 +472,7 @@ async def patch_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+    validate_compaction_override(body, server.app_runtime.agent_registry, user.id)
     if body.config is not None and isinstance(body.config, dict):
         assert_user_backend_root_dirs(
             user,

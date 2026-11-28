@@ -21,7 +21,7 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "octop-harness[all,cubesandbox-native,remote-backends]>=1.0.13",
+    "octop-harness[all,cubesandbox-native,remote-backends] @ git+https://github.com/TencentCloud/octop-harness.git@c286485a02f19c8ecd8f0367d50c75658e834c1c",
     "octop-memory>=1.0.7",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.5",
@@ -109,6 +109,9 @@ dev = [
 
 [project.scripts]
 octop = "octop.cli.main:cli"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/octop"]

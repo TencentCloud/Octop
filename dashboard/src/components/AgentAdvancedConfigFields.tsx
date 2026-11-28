@@ -1,3 +1,5 @@
+import { ExpertCompactModel } from "./CompactModelSelect";
+import type { ModelPickerOption } from "../utils/modelOptions";
 import { Form, InputNumber, Switch } from "antd";
 import type { ReactNode } from "react";
 import styles from "./AgentAdvancedConfigFields.module.less";
@@ -163,12 +165,18 @@ function RetryBudgetFields({
 }
 
 export function AgentAdvancedConfigFields({
+  models,
+  agentId,
+  focusCompact,
   requireLimits = false,
   grouped = false,
 }: {
   /** When true, ``max_iters`` and ``max_input_length`` are required. */
   requireLimits?: boolean;
   grouped?: boolean;
+  models?: ModelPickerOption[];
+  agentId?: string;
+  focusCompact?: boolean;
 }) {
   const { t } = useTranslation();
   const compactionEnabled = Form.useWatch(["compaction", "enabled"]);
@@ -294,6 +302,13 @@ export function AgentAdvancedConfigFields({
         grouped={grouped}
         title={t("agentConfig.runtimeGroups.compaction")}
       >
+        {models && (
+          <ExpertCompactModel
+            models={models}
+            agentId={agentId}
+            focus={focusCompact}
+          />
+        )}
         <Form.Item
           label={t("agentConfig.compaction.enabled")}
           name={["compaction", "enabled"]}

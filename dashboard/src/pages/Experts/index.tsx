@@ -313,10 +313,28 @@ export default function ExpertsPage() {
   );
 
   // ── Edit Drawer ────────────────────────────────────────────────
+  const [compactTarget, setCompactTarget] = useState<string | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [teamDrawer, setTeamDrawer] = useState<
     { mode: "create" } | { mode: "edit"; team: OctopAgent } | null
   >(null);
+  useEffect(() => {
+    const target = searchParams.get("compactModel");
+    if (!target) return;
+    const agent = localAgents.find((item) => item.agent_id === target);
+    if (!agent) return;
+    if (
+      agent.is_owner ||
+      currentUser?.role === "admin" ||
+      agent.user_id === currentUser?.id
+    ) {
+      setCompactTarget(target);
+      setEditAgent(agent);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("compactModel");
+    setSearchParams(next, { replace: true });
+  }, [localAgents, currentUser, searchParams, setSearchParams]);
   const [managedOpen, setManagedOpen] = useState(false);
 
   const handleEditSaved = useCallback(
@@ -333,6 +351,7 @@ export default function ExpertsPage() {
       >,
     ) => {
       setEditAgent(null);
+      setCompactTarget(null);
       setLocalAgents((prev) =>
         prev.map((a) =>
           a.agent_id === updated.agent_id
@@ -836,9 +855,13 @@ export default function ExpertsPage() {
       />
 
       <EditAgentDrawer
+        focusCompact={!!compactTarget && compactTarget === editAgent?.agent_id}
         open={!!editAgent}
         agent={editAgent}
-        onClose={() => setEditAgent(null)}
+        onClose={() => {
+          setEditAgent(null);
+          setCompactTarget(null);
+        }}
         onSaved={handleEditSaved}
       />
 

@@ -454,6 +454,19 @@ export default function ChatInputActionsRow({
   const showOverflowMenu =
     useCompactControls || (!flattenOverflow && overflowKeys.length > 0);
 
+  useEffect(() => {
+    const open = () => {
+      if (!showModelPicker) return;
+      if (flattenOverflow) setInlinePicker("model");
+      else {
+        setOverflowPopoverOpen(true);
+        setCompactPicker("model");
+      }
+    };
+    window.addEventListener("octop:open-model-picker", open);
+    return () => window.removeEventListener("octop:open-model-picker", open);
+  }, [flattenOverflow, showModelPicker]);
+
   const overflowBadgeCount =
     selectedConnectors.length +
     selectedKnowledgeBaseIds.length +

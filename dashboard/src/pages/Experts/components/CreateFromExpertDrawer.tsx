@@ -1218,7 +1218,7 @@ export default function CreateFromExpertDrawer({
             open={runtimeOpen}
             onOpenChange={setRuntimeOpen}
           >
-            <AgentAdvancedConfigFields grouped />
+            <AgentAdvancedConfigFields grouped models={models} />
           </ExpertSettingsDrawer>
         </ExpertDrawerSection>
       </Form>

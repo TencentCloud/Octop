@@ -3,9 +3,13 @@ import { AGENT_RUNTIME_CONFIG_KEYS } from "@/utils/agentRuntimeConfig";
 
 export const runtimeSettingsFields = [
   ...AGENT_RUNTIME_CONFIG_KEYS,
-  ...["enabled", "trigger_fraction", "keep_fraction", "trim_tokens"].map(
-    (field) => ["compaction", field],
-  ),
+  ...[
+    "model",
+    "enabled",
+    "trigger_fraction",
+    "keep_fraction",
+    "trim_tokens",
+  ].map((field) => ["compaction", field]),
 ];
 
 export function hasRuntimeSettingsErrors(

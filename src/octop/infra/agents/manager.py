@@ -2535,6 +2535,20 @@ class AgentManager:
                         impact.add(aid)
         return impact
 
+    def get_global_compaction_model(self) -> str | None:
+        return self._repos.settings_repo.get("compaction.model") or None
+
+    def validate_compaction_model(self, user_id: int, ref: str | None) -> None:
+        if ref is None:
+            return
+        self._assert_model_ref(user_id, ref)
+        if not self.providers.is_model_ref_usable(ref):
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "Select an enabled chat model for /compact")
+
+    def set_global_compaction_model(self, user_id: int, ref: str | None) -> None:
+        self.validate_compaction_model(user_id, ref)
+        self._repos.settings_repo.set("compaction.model", ref or "")
+
     def get_global_memory_defaults(self) -> GlobalMemoryDefaults:
         """Return the process-wide default memory extraction settings."""
         return load_global_memory_defaults(self._repos.settings_repo)

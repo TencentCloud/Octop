@@ -800,7 +800,12 @@ async def install_published_expert(
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
-            runtime_config=persisted_agent_settings(body, exclude_unset=True),
+            runtime_config=persisted_agent_settings(
+                body,
+                exclude_unset=True,
+                registry=server.app_runtime.agent_registry,
+                user_id=user.id,
+            ),
             enable_trajectory=body.enable_trajectory,
             conversation_mode=body.conversation_mode,
             workspace_patch=patch,
@@ -954,7 +959,12 @@ async def install_expert_hub_item(
                 composer_copies=copies,
                 composer_report=report,
                 quick_prompts=_quick_prompts_from_body(body),
-                **persisted_agent_settings(body, exclude_unset=False),
+                **persisted_agent_settings(
+                    body,
+                    exclude_unset=False,
+                    registry=server.app_runtime.agent_registry,
+                    user_id=user.id,
+                ),
             ),
         )
     except SkillHubMarketError as exc:
@@ -1113,7 +1123,9 @@ async def create_agent_from_expert(
         locale=locale,
         default_model=body.default_model,
         config_extra=config_extra or None,
-        runtime_config=persisted_agent_settings(body, exclude_unset=True),
+        runtime_config=persisted_agent_settings(
+            body, exclude_unset=True, registry=server.app_runtime.agent_registry, user_id=user.id
+        ),
         agent_id=body.agent_id,
         color=body.color,
         welcome_message=body.welcome_message,
