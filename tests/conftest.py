@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,33 @@ from typing import Any
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# A pre-commit hook runs the suite with git's own variables set (GIT_DIR points at this repo,
+# or at .git/worktrees/<name> sharing .git/config; the commit's author and committer too).
+# Tests that build throwaway repos with `git init --bare ...` or `git config user.name ...`
+# would then rewrite the real repository: core.bare=true (every worktree breaks), a test commit
+# identity, test commits on the real branch. And the hook's identity would override the
+# throwaway repos' own. No test should ever see them.
+GIT_REPO_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_PREFIX",
+    "GIT_NAMESPACE",
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_AUTHOR_DATE",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+    "GIT_COMMITTER_DATE",
+    "GIT_EDITOR",
+    "GIT_REFLOG_ACTION",
+)
+for _name in GIT_REPO_ENV:
+    os.environ.pop(_name, None)
 
 # Modules whose tests boot OctopServer, real harness, browser tooling, or bwrap.
 # Tagged ``slow`` so ``make test-fast`` can skip them during local iteration.
